@@ -75,6 +75,22 @@ pub async fn play_next(
         .get(guild_id)
         .ok_or_else(|| SerenyaError::Voice("Not connected to a voice channel".into()))?;
 
+    let finished_track = {
+        let player = player_lock.read().await;
+        player.now_playing.clone()
+    };
+
+    if let Some(track) = finished_track {
+        database.increment_songs_played(guild_id.get()).await;
+        if let Some(dur) = track.duration {
+            let mut settings = database.get_guild_settings(guild_id.get()).await;
+            settings.total_listening_seconds += dur.as_secs();
+            database
+                .update_guild_settings(guild_id.get(), settings)
+                .await;
+        }
+    }
+
     // 3. Advance the queue
     let mut player = player_lock.write().await;
     player.advance_queue();
