@@ -31,3 +31,23 @@ pub async fn about(ctx: Context<'_>) -> Result<(), Error> {
     ctx.send(reply).await?;
     Ok(())
 }
+
+/// Show help menu for commands.
+#[poise::command(slash_command, prefix_command)]
+pub async fn help(
+    ctx: Context<'_>,
+    #[description = "Specific command to show help for"]
+    #[autocomplete = "poise::builtins::autocomplete_command"]
+    command: Option<String>,
+) -> Result<(), Error> {
+    poise::builtins::help(
+        ctx,
+        command.as_deref(),
+        poise::builtins::HelpConfiguration {
+            extra_text_at_bottom: "Type /help <command> for more details.",
+            ..Default::default()
+        },
+    )
+    .await?;
+    Ok(())
+}

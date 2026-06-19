@@ -5,6 +5,7 @@ pub mod playback;
 pub mod playlist;
 pub mod queue;
 pub mod settings;
+pub mod stats;
 pub mod voice;
 
 use crate::utils::Error;
@@ -14,6 +15,7 @@ pub fn all_commands() -> Vec<poise::Command<crate::Data, Error>> {
     vec![
         meta::ping(),
         meta::about(),
+        meta::help(),
         playback::play(),
         playback::pause(),
         playback::resume(),
@@ -30,5 +32,6 @@ pub fn all_commands() -> Vec<poise::Command<crate::Data, Error>> {
         voice::leave(),
         playlist::playlist(),
         settings::settings(),
+        stats::stats(),
     ]
 }

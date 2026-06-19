@@ -148,7 +148,37 @@ async fn on_error(error: poise::FrameworkError<'_, Data, utils::Error>) {
     match error {
         poise::FrameworkError::Command { error, ctx, .. } => {
             error!(%error, command = ctx.command().name, "Command error");
-            let _ = ctx.say(format!("❌ An error occurred: {error}")).await;
+            let message = if let Some(serenya_err) =
+                error.downcast_ref::<crate::utils::error::SerenyaError>()
+            {
+                match serenya_err {
+                    crate::utils::error::SerenyaError::Permission(msg) => {
+                        format!("**Permission Denied:** {msg}")
+                    }
+                    crate::utils::error::SerenyaError::NotFound(msg) => {
+                        format!("**Not Found:** {msg}")
+                    }
+                    crate::utils::error::SerenyaError::Voice(msg) => {
+                        format!("**Voice Connection Error:** {msg}")
+                    }
+                    crate::utils::error::SerenyaError::Queue(msg) => {
+                        format!("**Queue Error:** {msg}")
+                    }
+                    crate::utils::error::SerenyaError::Database(msg) => {
+                        format!("**Database Error:** {msg}")
+                    }
+                    crate::utils::error::SerenyaError::Config(msg) => {
+                        format!("**Configuration Error:** {msg}")
+                    }
+                    other => format!("{other}"),
+                }
+            } else {
+                error.to_string()
+            };
+
+            let embed = crate::discord::embeds::error_embed(&message);
+            let reply = poise::CreateReply::default().embed(embed).ephemeral(true);
+            let _ = ctx.send(reply).await;
         }
         poise::FrameworkError::Setup { error, .. } => {
             error!(%error, "Failed to start bot");
