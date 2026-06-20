@@ -1271,34 +1271,50 @@ async fn resolve_spotify_playlist_api(
             tracks.len()
         );
 
-        let response = http_client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .await
-            .map_err(|e| {
-                SerenyaError::Audio(format!(
-                    "Failed to send Spotify playlist API request: {}",
-                    e
-                ))
-            })?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let err_body = response
-                .text()
+        let mut attempts = 0;
+        let mut response = None;
+        while attempts < 3 {
+            attempts += 1;
+            match http_client
+                .get(&url)
+                .header("Authorization", format!("Bearer {}", token))
+                .send()
                 .await
-                .unwrap_or_else(|_| "Failed to read response body".to_string());
-            tracing::error!(
-                "Spotify playlist API request failed with status: {}, body: {}",
-                status,
-                err_body
-            );
-            return Err(SerenyaError::Audio(format!(
-                "Spotify playlist API returned status: {}, body: {}",
-                status, err_body
-            )));
+            {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if status.is_success() {
+                        response = Some(resp);
+                        break;
+                    } else if status.as_u16() == 429 {
+                        let retry_after = resp.headers()
+                            .get("Retry-After")
+                            .and_then(|h| h.to_str().ok())
+                            .and_then(|s| s.parse::<u64>().ok())
+                            .unwrap_or(2);
+                        tracing::warn!("Spotify API rate limited (429). Retrying after {} seconds...", retry_after);
+                        tokio::time::sleep(Duration::from_secs(retry_after)).await;
+                    } else {
+                        tracing::warn!("Spotify API request failed with status: {} (attempt {}/3)", status, attempts);
+                        tokio::time::sleep(Duration::from_millis(500 * attempts)).await;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Spotify API request failed: {} (attempt {}/3)", e, attempts);
+                    tokio::time::sleep(Duration::from_millis(500 * attempts)).await;
+                }
+            }
         }
+
+        let response = match response {
+            Some(resp) => resp,
+            None => {
+                return Err(SerenyaError::Audio(format!(
+                    "Failed to fetch Spotify playlist tracks chunk after 3 attempts (offset {})",
+                    offset
+                )));
+            }
+        };
 
         let body: serde_json::Value = response.json().await.map_err(|e| {
             SerenyaError::Audio(format!("Failed to parse Spotify playlist API JSON: {}", e))
@@ -1417,16 +1433,36 @@ async fn resolve_spotify_playlist(
             tracing::info!(
                 "Spotify API credentials found. Attempting resolution via Spotify Web API..."
             );
-            match resolve_spotify_playlist_api(
-                playlist_id,
-                limit,
-                user_id,
-                client_id,
-                client_secret,
-                http_client,
-            )
-            .await
-            {
+            let mut api_attempts = 0;
+            let mut api_result = Err(SerenyaError::Audio("Not attempted".to_string()));
+            while api_attempts < 3 {
+                api_attempts += 1;
+                tracing::info!("Attempting Spotify Web API playlist resolution (attempt {}/3)...", api_attempts);
+                match resolve_spotify_playlist_api(
+                    playlist_id,
+                    limit,
+                    user_id,
+                    client_id,
+                    client_secret,
+                    http_client,
+                )
+                .await {
+                    Ok(tracks) => {
+                        api_result = Ok(tracks);
+                        break;
+                    }
+                    Err(err) => {
+                        tracing::warn!("Spotify Web API playlist resolution attempt {} failed: {:?}", api_attempts, err);
+                        if api_attempts < 3 {
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                        } else {
+                            api_result = Err(err);
+                        }
+                    }
+                }
+            }
+
+            match api_result {
                 Ok(tracks) => {
                     tracing::info!(
                         "Successfully resolved {} tracks via Spotify Web API",
@@ -1436,7 +1472,7 @@ async fn resolve_spotify_playlist(
                 }
                 Err(err) => {
                     tracing::warn!(
-                        "Spotify Web API playlist resolution failed ({:?}). Falling back to Spotify embed scraper...",
+                        "Spotify Web API playlist resolution failed completely after 3 attempts ({:?}). Falling back to Spotify embed scraper...",
                         err
                     );
                 }
