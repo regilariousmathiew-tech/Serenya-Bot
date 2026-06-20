@@ -8,7 +8,7 @@ pub async fn create(
 ) -> Result<(), Error> {
     let user_id = ctx.author().id.get();
     let db = &ctx.data().database;
-    let config = &ctx.data().config;
+    let config = ctx.data().config();
 
     let current_playlists = db.get_user_playlist_names(user_id).await;
     if current_playlists.len() >= config.playback.max_user_playlists {

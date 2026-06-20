@@ -34,10 +34,12 @@ pub async fn add(
 ) -> Result<(), Error> {
     let user_id = ctx.author().id.get();
     let db = &ctx.data().database;
-    let config = &ctx.data().config;
+    let config = ctx.data().config();
 
     ctx.defer().await?;
-    let tracks = crate::audio::resolve_input(&query, user_id, db, &ctx.data().http_client).await?;
+    let resolved =
+        crate::audio::resolve_input(&query, user_id, db, &ctx.data().http_client).await?;
+    let tracks = resolved.into_tracks_or_top();
     if tracks.is_empty() {
         ctx.say("No tracks found for the query.").await?;
         return Ok(());
