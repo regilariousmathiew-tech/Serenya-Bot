@@ -1,7 +1,7 @@
 use crate::utils::{Context, Error, SerenyaError};
 
 /// Join the user's voice channel.
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, aliases("j"))]
 pub async fn join(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
@@ -47,7 +47,7 @@ pub async fn join(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Leave the voice channel and clear queue state.
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, aliases("l"))]
 pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()

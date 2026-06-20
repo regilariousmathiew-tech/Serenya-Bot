@@ -35,7 +35,7 @@ pub async fn stats(ctx: Context<'_>) -> Result<(), Error> {
         }
     }
 
-    let instance_name = &ctx.data().config.bot.instance_id;
+    let instance_name = ctx.data().config().bot.instance_id.clone();
 
     // 2. Guild-specific statistics
     let database = &ctx.data().database;
@@ -78,7 +78,7 @@ pub async fn stats(ctx: Context<'_>) -> Result<(), Error> {
         guild_listening_time,
         queue_size,
         listeners,
-        instance_name,
+        &instance_name,
     );
 
     ctx.send(poise::CreateReply::default().embed(embed)).await?;
