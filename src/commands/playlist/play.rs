@@ -1,8 +1,6 @@
-use poise::serenity_prelude as serenity;
-use songbird::input::YoutubeDl;
-
 use crate::core::Track;
 use crate::utils::{Context, Error, SerenyaError};
+use poise::serenity_prelude as serenity;
 
 async fn enqueue_playlist_tracks(
     ctx: Context<'_>,
@@ -23,10 +21,18 @@ async fn enqueue_playlist_tracks(
     player.voice_channel = Some(user_channel_id);
     player.announce_channel = Some(ctx.channel_id());
 
-    let max_queue_size = ctx.data().config.playback.max_queue_size;
+    let max_queue_size = ctx.data().config().playback.max_queue_size;
 
     if player.playback_status == crate::core::PlaybackStatus::Idle && player.now_playing.is_none() {
-        let first = tracks.remove(0);
+        let mut first = tracks.remove(0);
+        
+        // Resolve first track search query synchronously so we have a real URL for the embed!
+        if first.url.starts_with("ytsearch1:") {
+            if let Err(e) = crate::audio::resolver::resolve_ytsearch_track(&mut first, &ctx.data().http_client).await {
+                tracing::error!("Failed to resolve Spotify track search: {:?}", e);
+            }
+        }
+
         player.now_playing = Some(first.clone());
         player.playback_status = crate::core::PlaybackStatus::Playing;
 
@@ -41,9 +47,11 @@ async fn enqueue_playlist_tracks(
                 .await
                 .map_err(|e| SerenyaError::Voice(format!("Failed to join voice channel: {}", e)))?
         };
+        let resolved_url =
+            crate::audio::extract_stream_url_for_guild(guild_id.get(), &first.url).await?;
         let mut call = call_lock.lock().await;
         let source: songbird::input::Input =
-            YoutubeDl::new(ctx.data().http_client.clone(), first.url.clone()).into();
+            songbird::input::HttpRequest::new(ctx.data().http_client.clone(), resolved_url).into();
         let handle = call.play_input(source);
 
         let _ = handle.add_event(
@@ -59,11 +67,15 @@ async fn enqueue_playlist_tracks(
         player.current_track_handle = Some(handle);
 
         let added = player.queue.push_batch(tracks, max_queue_size)?;
-        ctx.say(format!(
-            "🎶 **Now Playing playlist track:** {}\nEnqueued {} other tracks.",
-            first.title, added
-        ))
-        .await?;
+        let mut embed = crate::discord::embeds::now_playing_announce_embed(&first);
+        if added > 0 {
+            embed = embed.footer(serenity::CreateEmbedFooter::new(format!(
+                "Enqueued {} other tracks.",
+                added
+            )));
+        }
+        let reply = poise::CreateReply::default().embed(embed);
+        ctx.send(reply).await?;
     } else {
         let added = player.queue.push_batch(tracks, max_queue_size)?;
         ctx.say(format!(
@@ -123,6 +135,9 @@ pub async fn play(
             requester_id: ctx.author().id,
             requester_name: ctx.author().name.clone(),
             source_type: crate::core::SourceType::Playlist,
+            resolved_url: None,
+            thumbnail: None,
+            source_provider: "Playlist".to_owned(),
         });
     }
 

@@ -12,7 +12,7 @@ pub async fn require_guild(ctx: Context<'_>) -> Result<bool, Error> {
 
 /// Checks if the user invoking the command is in a voice channel.
 pub async fn require_voice_channel(ctx: Context<'_>) -> Result<bool, Error> {
-    let owner_id = ctx.data().config.bot.owner;
+    let owner_id = ctx.data().config().bot.owner;
     if ctx.author().id.get() == owner_id {
         return Ok(true);
     }
@@ -33,7 +33,7 @@ pub async fn require_voice_channel(ctx: Context<'_>) -> Result<bool, Error> {
 
 /// Checks if the user is in the same voice channel as the bot.
 pub async fn require_same_voice_channel(ctx: Context<'_>) -> Result<bool, Error> {
-    let owner_id = ctx.data().config.bot.owner;
+    let owner_id = ctx.data().config().bot.owner;
     if ctx.author().id.get() == owner_id {
         return Ok(true);
     }
@@ -77,7 +77,7 @@ pub async fn require_same_voice_channel(ctx: Context<'_>) -> Result<bool, Error>
 
 /// Checks if the user is the bot owner defined in the config.
 pub async fn is_owner(ctx: Context<'_>) -> Result<bool, Error> {
-    let owner_id = ctx.data().config.bot.owner;
+    let owner_id = ctx.data().config().bot.owner;
     if ctx.author().id.get() == owner_id {
         Ok(true)
     } else {

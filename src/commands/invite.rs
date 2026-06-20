@@ -3,7 +3,7 @@ use crate::utils::{Context, Error};
 /// Get the bot's invite link.
 #[poise::command(slash_command, prefix_command)]
 pub async fn invite(ctx: Context<'_>) -> Result<(), Error> {
-    let invite_link = if let Some(url) = &ctx.data().config.bot.invite_url {
+    let invite_link = if let Some(url) = &ctx.data().config().bot.invite_url {
         url.clone()
     } else {
         let client_id = ctx.cache().current_user().id.get();
@@ -21,13 +21,7 @@ pub async fn invite(ctx: Context<'_>) -> Result<(), Error> {
 /// Get the support server link.
 #[poise::command(slash_command, prefix_command)]
 pub async fn support(ctx: Context<'_>) -> Result<(), Error> {
-    if let Some(url) = &ctx.data().config.bot.support_url {
-        ctx.say(format!(
-            "💬 **Need help? Join the support server:**\n<{url}>"
-        ))
+    ctx.say("Cảm ơn bạn đã ủng hộ nhưng chúng tôi không có server riêng 💙")
         .await?;
-    } else {
-        ctx.say("❌ No support server link configured.").await?;
-    }
     Ok(())
 }
