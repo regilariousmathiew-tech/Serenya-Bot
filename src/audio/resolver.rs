@@ -277,7 +277,10 @@ async fn run_provider_search(
     match provider {
         SearchProviderKind::YouTubeMusic => YouTubeMusicProvider.search(query, http_client).await,
         SearchProviderKind::YouTube => YouTubeProvider.search(query, http_client).await,
-        SearchProviderKind::SoundCloud => SoundCloudProvider.search(query, http_client).await,
+        SearchProviderKind::SoundCloud if crate::audio::runtime::ytdlp_enabled() => {
+            SoundCloudProvider.search(query, http_client).await
+        }
+        SearchProviderKind::SoundCloud => Ok(Vec::new()),
     }
 }
 
@@ -331,7 +334,10 @@ async fn perform_parallel_search(
     )
     .await?;
 
-    if all_scored.is_empty() && !crate::audio::runtime::is_youtube_degraded() {
+    if all_scored.is_empty()
+        && crate::audio::runtime::ytdlp_enabled()
+        && !crate::audio::runtime::is_youtube_degraded()
+    {
         let yt = YouTubeProvider;
         match yt.search_fallback_ytdl(search_query).await {
             Ok(candidates) => {
@@ -376,7 +382,7 @@ async fn collect_search_results(
         .await?,
     );
 
-    if !crate::audio::runtime::is_youtube_degraded() {
+    if crate::audio::runtime::ytdlp_enabled() && !crate::audio::runtime::is_youtube_degraded() {
         let yt = YouTubeProvider;
         match yt.search_fallback_ytdl(query).await {
             Ok(candidates) => {
@@ -1258,10 +1264,14 @@ async fn resolve_spotify_playlist_api(
     let mut offset = 0;
 
     while tracks.len() < limit {
-        let chunk_limit = (limit - tracks.len()).min(100);
+        let chunk_limit = (limit - tracks.len()).min(50);
+        let market = crate::audio::runtime::spotify_settings()
+            .map(|settings| settings.market)
+            .filter(|market| !market.trim().is_empty())
+            .unwrap_or_else(|| "US".to_owned());
         let url = format!(
-            "https://api.spotify.com/v1/playlists/{}/tracks?limit={}&offset={}",
-            playlist_id, chunk_limit, offset
+            "https://api.spotify.com/v1/playlists/{}/items?limit={}&offset={}&market={}",
+            playlist_id, chunk_limit, offset, market
         );
 
         tracing::info!(
@@ -1343,7 +1353,7 @@ async fn resolve_spotify_playlist_api(
 
         let items_len = items.len();
         for item in items {
-            let Some(track_val) = item.get("track") else {
+            let Some(track_val) = item.get("track").or_else(|| item.get("item")) else {
                 continue;
             };
             if track_val.is_null() {
@@ -1415,7 +1425,7 @@ async fn resolve_spotify_playlist_api(
             break;
         }
 
-        offset += chunk_limit;
+        offset += items_len;
     }
 
     tracing::info!(
@@ -2042,7 +2052,7 @@ pub async fn resolve_ytsearch_track(
         Ok(())
     } else {
         let mut candidates = YouTubeProvider.search(query, http_client).await?;
-        if candidates.is_empty() {
+        if candidates.is_empty() && crate::audio::runtime::ytdlp_enabled() {
             if let Ok(ytdl_candidates) = YouTubeProvider.search_fallback_ytdl(query).await {
                 candidates = ytdl_candidates;
             }
