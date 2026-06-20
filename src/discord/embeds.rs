@@ -52,20 +52,46 @@ pub fn make_progress_bar(elapsed: Duration, duration: Option<Duration>) -> Strin
 /// Creates a now playing embed.
 pub fn now_playing_embed(
     track: &Track,
-    elapsed: Duration,
+    _elapsed: Duration,
     queue_pos: Option<usize>,
 ) -> serenity::CreateEmbed {
+    let duration_str = track
+        .duration
+        .map(format_duration)
+        .unwrap_or_else(|| "Live".to_string());
+
     let mut embed = serenity::CreateEmbed::new()
         .title("🎶 Now Playing")
-        .description(format!("[{}]({})", track.title, track.url))
-        .field("Requested By", &track.requester_name, true);
+        .description(if track.url.starts_with("http") {
+            format!("🎵 [{}]({})", track.title, track.url)
+        } else {
+            format!("🎵 **{}**", track.title)
+        })
+        .field("Requested By", &track.requester_name, true)
+        .field("Duration", duration_str, true)
+        .field("Source", track.clean_source(), true);
 
     if let Some(pos) = queue_pos {
         embed = embed.field("Queue Position", pos.to_string(), true);
     }
 
-    let progress = make_progress_bar(elapsed, track.duration);
-    embed.field("Progress", progress, false).color(0x5865F2)
+    embed = embed.color(0x5865F2);
+
+    if let Some(ref thumb) = track.thumbnail {
+        embed = embed.thumbnail(thumb);
+    }
+    embed
+}
+
+/// Creates a simplified minimal now playing embed for announcements.
+pub fn now_playing_announce_embed(track: &Track) -> serenity::CreateEmbed {
+    serenity::CreateEmbed::new()
+        .description(if track.url.starts_with("http") {
+            format!("🎶 **Now Playing:** [{}]({})", track.title, track.url)
+        } else {
+            format!("🎶 **Now Playing:** **{}**", track.title)
+        })
+        .color(0x5865F2)
 }
 
 /// Creates a track added to queue embed.
@@ -75,17 +101,27 @@ pub fn track_added_embed(track: &Track, queue_pos: usize) -> serenity::CreateEmb
         .map(format_duration)
         .unwrap_or_else(|| "Live".to_string());
 
-    serenity::CreateEmbed::new()
+    let mut embed = serenity::CreateEmbed::new()
         .title("📝 Track Enqueued")
-        .description(format!("[{}]({})", track.title, track.url))
+        .description(if track.url.starts_with("http") {
+            format!("🎵 [{}]({})", track.title, track.url)
+        } else {
+            format!("🎵 **{}**", track.title)
+        })
         .field("Requested By", &track.requester_name, true)
         .field("Duration", duration_str, true)
         .field("Queue Position", format!("#{}", queue_pos), true)
-        .color(0x57F287)
+        .field("Source", track.clean_source(), true)
+        .color(0x57F287);
+
+    if let Some(ref thumb) = track.thumbnail {
+        embed = embed.thumbnail(thumb);
+    }
+    embed
 }
 
 /// Creates a paginated queue embed.
-pub fn queue_embed(tracks: &[Track], page: usize, total_pages: usize) -> serenity::CreateEmbed {
+pub fn queue_embed(tracks: &[Track], page: usize, total_pages: usize, total_tracks: usize) -> serenity::CreateEmbed {
     let mut desc = String::new();
     for (i, track) in tracks.iter().enumerate() {
         let index = page * 10 + i + 1;
@@ -93,9 +129,15 @@ pub fn queue_embed(tracks: &[Track], page: usize, total_pages: usize) -> serenit
             .duration
             .map(format_duration)
             .unwrap_or_else(|| "Live".to_string());
+        let emoji = if page == 0 && i == 0 { "🔊" } else { "🎵" };
+        let requester = if track.requester_name.is_empty() {
+            "Unknown".to_string()
+        } else {
+            track.requester_name.clone()
+        };
         desc.push_str(&format!(
-            "**{}.** [{}]({}) | `{}` (Requested by {})\n",
-            index, track.title, track.url, duration, track.requester_name
+            "{} `{:02}.` **{}** — `{}`\n╰ Requested by **{}**\n",
+            emoji, index, track.title, duration, requester
         ));
     }
 
@@ -107,9 +149,10 @@ pub fn queue_embed(tracks: &[Track], page: usize, total_pages: usize) -> serenit
         .title("🎶 Current Queue")
         .description(desc)
         .footer(serenity::CreateEmbedFooter::new(format!(
-            "Page {}/{}",
+            "Page {}/{} • {} tracks",
             page + 1,
-            total_pages
+            total_pages,
+            total_tracks
         )))
         .color(0x5865F2)
 }

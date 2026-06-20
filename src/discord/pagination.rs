@@ -64,7 +64,7 @@ pub async fn paginate_queue(ctx: Context<'_>, tracks: &[Track]) -> Result<(), Er
     let ctx_id = ctx.id();
 
     let initial_slice = get_page_slice(tracks, 0, page_size);
-    let embed = queue_embed(initial_slice, 0, total_pages);
+    let embed = queue_embed(initial_slice, 0, total_pages, tracks.len());
     let components = make_navigation_components(ctx_id, 0, total_pages);
 
     let reply = poise::CreateReply::default()
@@ -73,7 +73,7 @@ pub async fn paginate_queue(ctx: Context<'_>, tracks: &[Track]) -> Result<(), Er
     let msg = ctx.send(reply).await?;
     let msg_inner = msg.into_message().await?;
 
-    let timeout = std::time::Duration::from_secs(60);
+    let timeout = std::time::Duration::from_secs(180);
     let start_time = std::time::Instant::now();
 
     while start_time.elapsed() < timeout {
@@ -101,7 +101,7 @@ pub async fn paginate_queue(ctx: Context<'_>, tracks: &[Track]) -> Result<(), Er
             }
 
             let slice = get_page_slice(tracks, current_page, page_size);
-            let next_embed = queue_embed(slice, current_page, total_pages);
+            let next_embed = queue_embed(slice, current_page, total_pages, tracks.len());
             let next_comps = make_navigation_components(ctx_id, current_page, total_pages);
 
             let _ = interaction
@@ -120,7 +120,7 @@ pub async fn paginate_queue(ctx: Context<'_>, tracks: &[Track]) -> Result<(), Er
     }
 
     let final_slice = get_page_slice(tracks, current_page, page_size);
-    let final_embed = queue_embed(final_slice, current_page, total_pages);
+    let final_embed = queue_embed(final_slice, current_page, total_pages, tracks.len());
     let _ = disable_buttons(msg_inner, &ctx.serenity_context().http, final_embed, ctx_id).await;
 
     Ok(())
@@ -158,7 +158,7 @@ pub async fn paginate_lyrics(
     let msg = ctx.send(reply).await?;
     let msg_inner = msg.into_message().await?;
 
-    let timeout = std::time::Duration::from_secs(60);
+    let timeout = std::time::Duration::from_secs(180);
     let start_time = std::time::Instant::now();
 
     while start_time.elapsed() < timeout {
