@@ -179,7 +179,10 @@ async fn enqueue_selected_track(
         player.current_track_handle = Some(handle);
 
         let msg = if selected_track.url.starts_with("http") {
-            format!("🎶 **Now Playing:** [{}]({})", selected_track.title, selected_track.url)
+            format!(
+                "🎶 **Now Playing:** [{}]({})",
+                selected_track.title, selected_track.url
+            )
         } else {
             format!("🎶 **Now Playing:** {}", selected_track.title)
         };

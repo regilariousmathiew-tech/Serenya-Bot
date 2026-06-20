@@ -121,7 +121,12 @@ pub fn track_added_embed(track: &Track, queue_pos: usize) -> serenity::CreateEmb
 }
 
 /// Creates a paginated queue embed.
-pub fn queue_embed(tracks: &[Track], page: usize, total_pages: usize, total_tracks: usize) -> serenity::CreateEmbed {
+pub fn queue_embed(
+    tracks: &[Track],
+    page: usize,
+    total_pages: usize,
+    total_tracks: usize,
+) -> serenity::CreateEmbed {
     let mut desc = String::new();
     for (i, track) in tracks.iter().enumerate() {
         let index = page * 10 + i + 1;

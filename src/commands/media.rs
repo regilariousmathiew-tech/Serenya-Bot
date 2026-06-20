@@ -175,11 +175,23 @@ pub async fn songinfo(ctx: Context<'_>) -> Result<(), Error> {
     let mut embed = serenity::CreateEmbed::new()
         .title("ℹ️ Detailed Song Information")
         .field("Title", title_val, false)
-        .field("Requested By", format!("👤 **{}**", track.requester_name), true)
-        .field("Duration", format!("⏱️ **{} / {}**", elapsed_str, duration_str), true)
+        .field(
+            "Requested By",
+            format!("👤 **{}**", track.requester_name),
+            true,
+        )
+        .field(
+            "Duration",
+            format!("⏱️ **{} / {}**", elapsed_str, duration_str),
+            true,
+        )
         .field("Source", format!("💿 **{}**", source), true)
         .field("Loop State", format!("🔁 **{}**", loop_str), true)
-        .field("Playback Status", format!("🎵 **{:?}**", player.playback_status), true)
+        .field(
+            "Playback Status",
+            format!("🎵 **{:?}**", player.playback_status),
+            true,
+        )
         .field("Lyrics Status", format!("🎤 **{}**", lyrics_status), true)
         .color(0x5865F2);
 

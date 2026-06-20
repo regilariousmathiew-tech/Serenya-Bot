@@ -25,12 +25,7 @@ async fn check_cleanup_permissions(ctx: Context<'_>) -> Result<bool, Error> {
 }
 
 /// Delete bot messages in the current channel.
-#[poise::command(
-    slash_command,
-    prefix_command,
-    rename = "cleanup",
-    aliases("clean")
-)]
+#[poise::command(slash_command, prefix_command, rename = "cleanup", aliases("clean"))]
 pub async fn cleanup(
     ctx: Context<'_>,
     #[description = "Number of messages to scan (default: scan all up to 2000)"]
@@ -47,40 +42,40 @@ pub async fn cleanup(
     let (scanned_count, deleted_count, skipped_old) = {
         let mut messages = Vec::new();
         let mut before_id = None;
-        
+
         let limit_to_scan = amount.unwrap_or(2000);
         let mut remaining = limit_to_scan;
-        
+
         while remaining > 0 {
             let count_to_fetch = remaining.min(100) as u8;
             let mut builder = serenity::GetMessages::new().limit(count_to_fetch);
             if let Some(id) = before_id {
                 builder = builder.before(id);
             }
-            
+
             let fetched = channel_id.messages(ctx, builder).await?;
             if fetched.is_empty() {
                 break;
             }
-            
+
             before_id = fetched.last().map(|m| m.id);
             remaining -= fetched.len() as u32;
             messages.extend(fetched);
-            
+
             if before_id.is_none() {
                 break;
             }
         }
-        
+
         let now = chrono::Utc::now();
         let mut to_delete = Vec::new();
         let mut skipped_old = 0;
         let prefix = ctx.data().config().bot.prefix.clone();
-        
+
         for msg in &messages {
             let is_bot_msg = msg.author.id == bot_id;
             let is_command_msg = msg.content.starts_with(&prefix);
-            
+
             if is_bot_msg || is_command_msg {
                 let age = now.signed_duration_since(msg.timestamp.with_timezone(&chrono::Utc));
                 if age.num_days() >= 14 {
@@ -90,9 +85,9 @@ pub async fn cleanup(
                 }
             }
         }
-        
+
         let deleted = to_delete.len();
-        
+
         // Delete in chunks of 100
         for chunk in to_delete.chunks(100) {
             if chunk.len() == 1 {
@@ -101,7 +96,7 @@ pub async fn cleanup(
                 channel_id.delete_messages(ctx, chunk).await?;
             }
         }
-        
+
         (messages.len(), deleted, skipped_old)
     };
 

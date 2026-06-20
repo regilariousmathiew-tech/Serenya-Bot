@@ -25,10 +25,13 @@ async fn enqueue_playlist_tracks(
 
     if player.playback_status == crate::core::PlaybackStatus::Idle && player.now_playing.is_none() {
         let mut first = tracks.remove(0);
-        
+
         // Resolve first track search query synchronously so we have a real URL for the embed!
         if first.url.starts_with("ytsearch1:") {
-            if let Err(e) = crate::audio::resolver::resolve_ytsearch_track(&mut first, &ctx.data().http_client).await {
+            if let Err(e) =
+                crate::audio::resolver::resolve_ytsearch_track(&mut first, &ctx.data().http_client)
+                    .await
+            {
                 tracing::error!("Failed to resolve Spotify track search: {:?}", e);
             }
         }

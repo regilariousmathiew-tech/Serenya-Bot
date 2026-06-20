@@ -143,8 +143,6 @@ fn validate_config(config: &BotConfig) -> Result<(), SerenyaError> {
         return Err(SerenyaError::Config("bot.owner must not be zero".into()));
     }
 
-
-
     validate_resolver_config(&config.resolver)?;
     Ok(())
 }
@@ -301,8 +299,6 @@ mod tests {
         };
         assert!(validate_config(&config).is_err());
     }
-
-
 
     #[test]
     fn validate_accepts_valid_config() {

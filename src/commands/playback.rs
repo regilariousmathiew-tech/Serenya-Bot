@@ -47,10 +47,9 @@ pub async fn play(
             if let Some(call) = manager.get(guild_id) {
                 Ok::<_, SerenyaError>(call)
             } else {
-                manager
-                    .join(guild_id, user_channel_id)
-                    .await
-                    .map_err(|e| SerenyaError::Voice(format!("Failed to join voice channel: {}", e)))
+                manager.join(guild_id, user_channel_id).await.map_err(|e| {
+                    SerenyaError::Voice(format!("Failed to join voice channel: {}", e))
+                })
             }
         },
         resolve_input(&query, user_id, db_ref, http_ref)
@@ -181,7 +180,12 @@ async fn enqueue_and_play_resolved(
 
         // Resolve first track search query synchronously so we have a real URL for the embed!
         if first_track.url.starts_with("ytsearch1:") {
-            if let Err(e) = crate::audio::resolver::resolve_ytsearch_track(&mut first_track, &ctx.data().http_client).await {
+            if let Err(e) = crate::audio::resolver::resolve_ytsearch_track(
+                &mut first_track,
+                &ctx.data().http_client,
+            )
+            .await
+            {
                 tracing::error!("Failed to resolve Spotify track search: {:?}", e);
             }
         }
@@ -204,7 +208,12 @@ async fn enqueue_and_play_resolved(
         tokio::spawn(async move {
             let mut current_track = first_track_clone.clone();
             if current_track.url.starts_with("ytsearch1:") {
-                if let Err(e) = crate::audio::resolver::resolve_ytsearch_track(&mut current_track, &http_client_clone).await {
+                if let Err(e) = crate::audio::resolver::resolve_ytsearch_track(
+                    &mut current_track,
+                    &http_client_clone,
+                )
+                .await
+                {
                     tracing::error!("Failed to resolve Spotify track search: {:?}", e);
                 } else {
                     // Update player's now_playing field with the resolved track
@@ -303,7 +312,8 @@ async fn enqueue_and_play_resolved(
 
             let mut call = call_lock_clone.lock().await;
             let source: songbird::input::Input =
-                songbird::input::HttpRequest::new(http_client_clone.clone(), resolved_url.clone()).into();
+                songbird::input::HttpRequest::new(http_client_clone.clone(), resolved_url.clone())
+                    .into();
             let handle = call.play_input(source);
 
             // 4. Register event handlers

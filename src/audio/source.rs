@@ -323,22 +323,23 @@ async fn extract_stream_url_inner(track_url: &str) -> Result<String, SerenyaErro
 #[allow(dead_code)]
 async fn resolve_via_rusty_ytdl(track_url: &str) -> Result<String, SerenyaError> {
     use rusty_ytdl::{Video, VideoOptions, VideoSearchOptions, choose_format};
-    
+
     let video = Video::new(track_url)
         .map_err(|e| SerenyaError::Audio(format!("rusty_ytdl init failed: {e}")))?;
-    
-    let video_info = video.get_info()
+
+    let video_info = video
+        .get_info()
         .await
         .map_err(|e| SerenyaError::Audio(format!("rusty_ytdl get_info failed: {e}")))?;
-    
+
     let video_options = VideoOptions {
         filter: VideoSearchOptions::Audio,
         ..Default::default()
     };
-    
+
     let format = choose_format(&video_info.formats, &video_options)
         .map_err(|e| SerenyaError::Audio(format!("rusty_ytdl choose_format failed: {e}")))?;
-        
+
     Ok(format.url.clone())
 }
 

@@ -174,7 +174,9 @@ pub async fn play_next(
 
     // Resolve ytsearch1: outside of the write lock!
     if track.url.starts_with("ytsearch1:") {
-        if let Err(e) = crate::audio::resolver::resolve_ytsearch_track(&mut track, http_client).await {
+        if let Err(e) =
+            crate::audio::resolver::resolve_ytsearch_track(&mut track, http_client).await
+        {
             tracing::error!("Failed to resolve Spotify track search: {:?}", e);
         } else {
             // Update player's now_playing field with the resolved track
@@ -190,8 +192,7 @@ pub async fn play_next(
     let resolved = match track.resolved_url.clone() {
         Some(url) => url,
         None => {
-            crate::audio::source::extract_stream_url_for_guild(guild_id.get(), &track.url)
-                .await?
+            crate::audio::source::extract_stream_url_for_guild(guild_id.get(), &track.url).await?
         }
     };
 
@@ -251,7 +252,12 @@ pub async fn play_next(
     }
 
     // Schedule prefetching for the next track in the queue (pass http_client!)
-    schedule_prefetch(guild_id, guild_players.clone(), track.duration, http_client.clone());
+    schedule_prefetch(
+        guild_id,
+        guild_players.clone(),
+        track.duration,
+        http_client.clone(),
+    );
 
     // Announce track if enabled in database
     let announce_setting = database
@@ -266,10 +272,7 @@ pub async fn play_next(
             tokio::spawn(async move {
                 let embed = now_playing_announce_embed(&track_clone);
                 let _ = channel
-                    .send_message(
-                        &ctx_clone.http,
-                        serenity::CreateMessage::new().embed(embed),
-                    )
+                    .send_message(&ctx_clone.http, serenity::CreateMessage::new().embed(embed))
                     .await;
             });
         }
@@ -311,7 +314,9 @@ pub async fn trigger_prefetch(
 
     if needs_resolution {
         if let Some(ref mut track) = track_to_resolve {
-            if let Err(e) = crate::audio::resolver::resolve_ytsearch_track(track, &http_client).await {
+            if let Err(e) =
+                crate::audio::resolver::resolve_ytsearch_track(track, &http_client).await
+            {
                 tracing::error!("Failed to resolve Spotify track in prefetcher: {:?}", e);
             } else {
                 // Update it in the queue
@@ -379,7 +384,7 @@ pub fn schedule_prefetch(
 ) {
     let gp_clone = guild_players.clone();
     let client_clone = http_client.clone();
-    
+
     // 1. Immediate prefetch to resolve next track search and stream URL right away
     tokio::spawn(async move {
         trigger_prefetch(guild_id, gp_clone, client_clone).await;
