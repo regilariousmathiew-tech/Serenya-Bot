@@ -167,11 +167,8 @@ pub(crate) async fn get_spotify_access_token(
     let token_response = tokio::time::timeout(timeout, async {
         http_client
             .post("https://accounts.spotify.com/api/token")
-            .form(&[
-                ("grant_type", "client_credentials"),
-                ("client_id", client_id),
-                ("client_secret", client_secret),
-            ])
+            .basic_auth(client_id, Some(client_secret))
+            .form(&[("grant_type", "client_credentials")])
             .send()
             .await
     })
