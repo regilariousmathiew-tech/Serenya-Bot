@@ -409,11 +409,22 @@ pub fn create_ffmpeg_stream_input(
         args.push(position.as_secs().to_string());
     }
 
+    let is_youtube = stream_url.contains("youtube.com")
+        || stream_url.contains("googlevideo.com")
+        || stream_url.contains("youtu.be");
+
+    args.push("-user_agent".to_owned());
+    args.push("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36".to_owned());
+
+    if is_youtube {
+        args.push("-headers".to_owned());
+        args.push("Referer: https://www.youtube.com/\r\nOrigin: https://www.youtube.com\r\n".to_owned());
+    } else if stream_url.contains("soundcloud") {
+        args.push("-headers".to_owned());
+        args.push("Referer: https://soundcloud.com/\r\nOrigin: https://soundcloud.com\r\n".to_owned());
+    }
+
     args.extend([
-        "-user_agent".to_owned(),
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36".to_owned(),
-        "-headers".to_owned(),
-        "Referer: https://www.youtube.com/\r\nOrigin: https://www.youtube.com\r\n".to_owned(),
         "-i".to_owned(),
         stream_url.to_owned(),
         "-vn".to_owned(),

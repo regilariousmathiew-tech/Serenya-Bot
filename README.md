@@ -25,8 +25,9 @@ Serenya is a Rust-based, multi-guild Discord music bot designed for high perform
 - Rust 1.85+
 - Visual Studio Build Tools (on Windows) or GCC/Clang (on Linux)
 - CMake
-- `ffmpeg` for seek restart and optional 8D audio mode.
-- `yt-dlp` is currently disabled in the runtime while native Rust and lightweight resolver paths are evaluated.
+- `ffmpeg` and `yt-dlp` installed and present in the system `PATH`.
+  - On Windows, you can optionally place the executables in a `bin/` subdirectory in the project root.
+  - On Linux (e.g. VPS Ubuntu), install them globally via package managers (e.g., `apt install ffmpeg`) and ensure they are accessible.
 
 ### Configuration
 
@@ -60,13 +61,6 @@ spotify:
   max_album_import: 500
   max_artist_top_tracks: 50
   market: US
-
-audio:
-  default_quality: balanced
-  modes:
-    - performance
-    - balanced
-    - quality
 
 resolver:
   max_concurrent_ytdlp: 2

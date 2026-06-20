@@ -34,13 +34,6 @@ playback:
   max_user_playlists: 10
   max_tracks_per_user_playlist: 500
 
-audio:
-  default_quality: balanced
-  modes:
-    - performance
-    - balanced
-    - quality
-
 resolver:
   max_concurrent_ytdlp: 4
   max_concurrent_resolves_per_guild: 2

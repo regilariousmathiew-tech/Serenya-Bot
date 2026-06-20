@@ -211,11 +211,15 @@ fn configure_path() {
     if let Ok(cwd) = std::env::current_dir() {
         let bin_dir = cwd.join("bin");
         if bin_dir.exists() {
-            let current = std::env::var("PATH").unwrap_or_default();
-            unsafe {
-                std::env::set_var("PATH", format!("{};{}", bin_dir.display(), current));
+            let mut paths = vec![bin_dir];
+            if let Some(path_var) = std::env::var_os("PATH") {
+                paths.extend(std::env::split_paths(&path_var));
             }
-            eprintln!("Added {} to PATH", bin_dir.display());
+            if let Ok(new_path) = std::env::join_paths(paths) {
+                unsafe {
+                    std::env::set_var("PATH", new_path);
+                }
+            }
         }
     }
 }

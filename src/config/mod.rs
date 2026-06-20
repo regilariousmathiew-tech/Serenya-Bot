@@ -8,7 +8,6 @@ pub struct BotConfig {
     pub logging: LoggingSection,
     pub spotify: SpotifySection,
     pub playback: PlaybackSection,
-    pub audio: AudioSection,
     #[serde(default)]
     pub resolver: ResolverSection,
 }
@@ -59,11 +58,7 @@ pub struct PlaybackSection {
     pub max_tracks_per_user_playlist: usize,
 }
 
-#[derive(Deserialize, Clone, Debug)]
-pub struct AudioSection {
-    pub default_quality: String,
-    pub modes: Vec<String>,
-}
+
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -249,7 +244,6 @@ mod tests {
             logging: test_logging(),
             spotify: test_spotify(),
             playback: test_playback(),
-            audio: test_audio(),
             resolver: ResolverSection::default(),
         };
         assert!(validate_config(&config).is_err());
@@ -271,7 +265,6 @@ mod tests {
             logging: test_logging(),
             spotify: test_spotify(),
             playback: test_playback(),
-            audio: test_audio(),
             resolver: ResolverSection::default(),
         };
         assert!(validate_config(&config).is_err());
@@ -293,7 +286,6 @@ mod tests {
             logging: test_logging(),
             spotify: test_spotify(),
             playback: test_playback(),
-            audio: test_audio(),
             resolver: ResolverSection::default(),
         };
         assert!(validate_config(&config).is_err());
@@ -315,7 +307,6 @@ mod tests {
             logging: test_logging(),
             spotify: test_spotify(),
             playback: test_playback(),
-            audio: test_audio(),
             resolver: ResolverSection::default(),
         };
         assert!(validate_config(&config).is_ok());
@@ -358,10 +349,4 @@ mod tests {
         }
     }
 
-    fn test_audio() -> AudioSection {
-        AudioSection {
-            default_quality: "balanced".into(),
-            modes: vec!["performance".into(), "balanced".into(), "quality".into()],
-        }
-    }
 }
