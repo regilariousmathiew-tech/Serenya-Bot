@@ -24,6 +24,7 @@ target
 database.yml
 database.yml.tmp
 database.yml.bak
+config.yml
 
 # Internal documents
 document/
