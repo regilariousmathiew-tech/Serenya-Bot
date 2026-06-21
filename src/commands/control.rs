@@ -264,7 +264,7 @@ pub async fn replay(ctx: Context<'_>) -> Result<(), Error> {
         let _ = handle.seek(Duration::from_secs(0));
         ctx.say("🔄 Replaying current track from the beginning.")
             .await?;
-    } else if let Some(prev) = player.previous_track.clone() {
+    } else if let Some(prev) = player.previous_track.take() {
         ctx.say(format!("🔄 Replaying previous track: **{}**", prev.title))
             .await?;
         player.queue.push_front(prev);
@@ -306,12 +306,12 @@ pub async fn previous(ctx: Context<'_>) -> Result<(), Error> {
 
     let prev = player
         .previous_track
-        .clone()
+        .take()
         .ok_or_else(|| SerenyaError::NotFound("No previous track found.".into()))?;
 
-    player.queue.push_front(prev.clone());
     ctx.say(format!("⏮️ Playing previous track: **{}**", prev.title))
         .await?;
+    player.queue.push_front(prev);
 
     player.skip_forced = true;
     if let Some(handle) = &player.current_track_handle {

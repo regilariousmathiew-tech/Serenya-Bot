@@ -10,7 +10,7 @@ pub struct ExternalTrackMeta {
     pub title: String,
     pub artist: Option<String>,
     pub duration: Option<Duration>,
-    pub thumbnail: Option<String>,
+    pub thumbnail: Option<std::sync::Arc<str>>,
 }
 
 #[async_trait]
@@ -135,7 +135,7 @@ impl SpotifyProvider {
             title: og_title,
             artist,
             duration,
-            thumbnail: og_image,
+            thumbnail: og_image.map(std::sync::Arc::from),
         })
     }
 }
@@ -741,7 +741,7 @@ impl MetadataProvider for SpotifyProvider {
                 is_official: true,
                 is_topic_channel: false,
                 url,
-                thumbnail,
+                thumbnail: thumbnail.map(std::sync::Arc::from),
             });
         }
 
@@ -827,7 +827,7 @@ impl AppleMusicProvider {
                     title,
                     artist,
                     duration,
-                    thumbnail,
+                    thumbnail: thumbnail.map(std::sync::Arc::from),
                 });
             }
         }
@@ -911,7 +911,7 @@ impl MetadataProvider for AppleMusicProvider {
                 is_official: true,
                 is_topic_channel: false,
                 url,
-                thumbnail,
+                thumbnail: thumbnail.map(std::sync::Arc::from),
             });
         }
 
@@ -974,7 +974,7 @@ impl DeezerProvider {
                         title: title.to_owned(),
                         artist,
                         duration,
-                        thumbnail,
+                        thumbnail: thumbnail.map(std::sync::Arc::from),
                     });
                 }
             }
@@ -1019,7 +1019,7 @@ impl DeezerProvider {
             title,
             artist,
             duration,
-            thumbnail,
+            thumbnail: thumbnail.map(std::sync::Arc::from),
         })
     }
 }
@@ -1089,7 +1089,7 @@ impl MetadataProvider for DeezerProvider {
                         is_official: true,
                         is_topic_channel: false,
                         url,
-                        thumbnail,
+                        thumbnail: thumbnail.map(std::sync::Arc::from),
                     });
                 }
             }
@@ -1136,7 +1136,7 @@ impl YouTubeProvider {
             requester_name: "".to_owned(),
             source_type: SourceType::Url,
             resolved_url: None,
-            thumbnail,
+            thumbnail: thumbnail.map(std::sync::Arc::from),
             source_provider: "YouTube".to_owned(),
         }])
     }
@@ -1315,7 +1315,7 @@ impl YouTubeProvider {
                         is_official: is_verified_artist || is_verified,
                         is_topic_channel: is_topic,
                         url: format!("https://www.youtube.com/watch?v={}", id),
-                        thumbnail,
+                        thumbnail: thumbnail.map(std::sync::Arc::from),
                     });
 
                     if candidates.len() >= 7 {
@@ -1504,7 +1504,7 @@ impl SoundCloudProvider {
             requester_name: "".to_owned(),
             source_type: SourceType::Url,
             resolved_url: None,
-            thumbnail,
+            thumbnail: thumbnail.map(std::sync::Arc::from),
             source_provider: "SoundCloud".to_owned(),
         }])
     }

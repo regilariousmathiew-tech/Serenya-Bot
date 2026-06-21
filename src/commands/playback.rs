@@ -176,11 +176,12 @@ pub(crate) async fn enqueue_and_play_resolved(
     if player.playback_status == PlaybackStatus::Idle && player.now_playing.is_none() {
         // Play first track immediately
         let mut first_track = tracks.remove(0);
-        first_track.requester_name = ctx.author().name.clone();
+        let requester_name = ctx.author().name.clone();
+        first_track.requester_name = requester_name.clone();
 
         // Fix: set requester_name for all remaining tracks before queuing
         for t in &mut tracks {
-            t.requester_name = ctx.author().name.clone();
+            t.requester_name = requester_name.clone();
         }
 
         player.now_playing = Some(first_track.clone());
@@ -199,7 +200,9 @@ pub(crate) async fn enqueue_and_play_resolved(
         let first_track_clone = first_track.clone();
 
         tokio::spawn(async move {
-            let mut current_track = first_track_clone.clone();
+            let original_url = first_track_clone.url.clone();
+            let mut current_track = first_track_clone;
+
             if current_track.url.starts_with("ytsearch1:") {
                 if let Err(e) = crate::audio::resolver::resolve_ytsearch_track(
                     &mut current_track,
@@ -213,7 +216,7 @@ pub(crate) async fn enqueue_and_play_resolved(
                     let mut player = player_lock_clone.write().await;
                     if player.playback_status == PlaybackStatus::Playing {
                         if let Some(ref mut np) = player.now_playing {
-                            if np.url == first_track_clone.url {
+                            if np.url == original_url {
                                 *np = current_track.clone();
                             }
                         }
@@ -236,7 +239,7 @@ pub(crate) async fn enqueue_and_play_resolved(
                     return;
                 }
                 if let Some(ref current) = player.now_playing {
-                    if current.url != current_track.url && current.url != first_track_clone.url {
+                    if current.url != current_track.url && current.url != original_url {
                         tracing::info!(
                             "Track was skipped or changed while resolving stream URL, aborting playback"
                         );
@@ -309,7 +312,6 @@ pub(crate) async fn enqueue_and_play_resolved(
                 player.eight_d_enabled
             };
             let source = match crate::audio::source::create_stream_input(
-                http_client_clone.clone(),
                 resolved_url.clone(),
                 eight_d_enabled,
             ) {
@@ -350,14 +352,14 @@ pub(crate) async fn enqueue_and_play_resolved(
             // Check race condition again
             if player.playback_status == PlaybackStatus::Playing {
                 if let Some(ref mut current) = player.now_playing {
-                    if current.url == current_track.url || current.url == first_track_clone.url {
-                        current.resolved_url = Some(resolved_url.clone());
+                    if current.url == current_track.url || current.url == original_url {
+                        current.resolved_url = Some(resolved_url);
                         player.current_track_handle = Some(handle);
                         crate::audio::events::schedule_prefetch(
                             guild_id,
-                            guild_players_clone.clone(),
+                            guild_players_clone,
                             current_track.duration,
-                            http_client_clone.clone(),
+                            http_client_clone,
                         );
                         return;
                     }
@@ -392,8 +394,9 @@ pub(crate) async fn enqueue_and_play_resolved(
         let first_title = tracks.first().map(|t| t.title.clone()).unwrap_or_default();
 
         // Populate requester names
+        let requester_name = ctx.author().name.clone();
         for t in &mut tracks {
-            t.requester_name = ctx.author().name.clone();
+            t.requester_name = requester_name.clone();
         }
 
         let added = player.queue.push_batch(tracks, max_queue_size)?;

@@ -102,7 +102,6 @@ async fn enqueue_selected_track(
         let eight_d_enabled = player.eight_d_enabled;
         let mut call = call_lock.lock().await;
         let source = crate::audio::source::create_stream_input(
-            ctx.data().http_client.clone(),
             resolved_url,
             eight_d_enabled,
         )?;

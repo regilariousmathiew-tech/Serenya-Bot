@@ -420,7 +420,6 @@ async fn resolve_youtube_stream_native(track_url: &str) -> Option<String> {
 }
 
 pub fn create_stream_input(
-    _http_client: reqwest::Client,
     stream_url: String,
     eight_d_enabled: bool,
 ) -> Result<songbird::input::Input, SerenyaError> {

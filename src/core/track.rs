@@ -9,7 +9,7 @@ pub struct Track {
     pub requester_name: String,
     pub source_type: SourceType,
     pub resolved_url: Option<String>,
-    pub thumbnail: Option<String>,
+    pub thumbnail: Option<std::sync::Arc<str>>,
     pub source_provider: String,
 }
 

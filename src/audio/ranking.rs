@@ -10,7 +10,7 @@ pub struct TrackCandidate {
     pub is_official: bool,
     pub is_topic_channel: bool,
     pub url: String,
-    pub thumbnail: Option<String>,
+    pub thumbnail: Option<std::sync::Arc<str>>,
 }
 
 #[derive(Debug, Clone, Copy)]

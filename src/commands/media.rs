@@ -196,7 +196,7 @@ pub async fn songinfo(ctx: Context<'_>) -> Result<(), Error> {
         .color(0x5865F2);
 
     if let Some(ref thumb) = track.thumbnail {
-        embed = embed.thumbnail(thumb);
+        embed = embed.thumbnail(thumb.to_string());
     }
 
     ctx.send(poise::CreateReply::default().embed(embed)).await?;
