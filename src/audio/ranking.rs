@@ -257,7 +257,7 @@ pub fn score_candidates(
 ) -> Vec<(TrackCandidate, f64)> {
     let query_lower = query.to_lowercase();
     let expected_title_lower = expected_title.to_lowercase();
-    let clean_expected_title = clean_title(expected_title);
+    let clean_expected_title_lower = clean_title(expected_title).to_lowercase();
     let expected_artist_lower = expected_artist.map(|a| a.to_lowercase());
     let mut scored = Vec::new();
 
@@ -308,9 +308,9 @@ pub fn score_candidates(
         }
 
         // 2. Title Match Score
-        let clean_cand_title = clean_title(&candidate.title);
-        let title_similarity = jaro_winkler_similarity(&clean_expected_title, &clean_cand_title)
-            .max(jaro_winkler_similarity(expected_title, &candidate.title));
+        let clean_cand_title_lower = clean_title(&candidate.title).to_lowercase();
+        let title_similarity = strsim::jaro_winkler(&clean_expected_title_lower, &clean_cand_title_lower)
+            .max(strsim::jaro_winkler(&expected_title_lower, &candidate_title_lower));
 
         // 3. Artist Match Score (if expected artist exists)
         let candidate_artist_lower = candidate.artist.to_lowercase();
@@ -318,7 +318,7 @@ pub fn score_candidates(
             if candidate_artist_lower.contains(art_lower.as_str()) || art_lower.contains(candidate_artist_lower.as_str()) {
                 1.0
             } else {
-                jaro_winkler_similarity(expected_artist.unwrap_or_default(), &candidate.artist)
+                strsim::jaro_winkler(art_lower.as_str(), &candidate_artist_lower)
             }
         } else {
             1.0

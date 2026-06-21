@@ -48,7 +48,7 @@ async fn run() -> Result<(), utils::Error> {
     installer::ensure_dependencies().await;
     configure_path();
 
-    let config = Arc::new(config::load_config("config.yml")?);
+    let config = Arc::new(config::load_config("config.yml").await?);
 
     // Register secrets for redaction
     crate::logging::register_secret_to_redact(&config.bot.token);
