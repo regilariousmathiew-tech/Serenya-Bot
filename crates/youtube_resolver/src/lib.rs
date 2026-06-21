@@ -394,6 +394,86 @@ pub fn create_ios_client(version: Option<String>) -> BaseInnerTubeClient {
     )
 }
 
+/// Helper to extract the best audio stream URL for a given video ID.
+/// Tries the ANDROID client first, and falls back to the IOS client if needed.
+/// Prioritizes itags: 251 (Opus), 140 (AAC), 250 (Opus), 249 (Opus), 139 (AAC), then any other audio format.
+pub async fn resolve_best_audio_stream(
+    video_id: &str,
+    context: &ResolveContext,
+) -> Result<String, ResolveError> {
+    // 1. Try ANDROID client
+    let android_client = create_android_client(None);
+    match android_client.player(video_id, context).await {
+        Ok(player_res) => {
+            if let Some(url) = extract_best_audio_url(&player_res) {
+                return Ok(url);
+            }
+        }
+        Err(_e) => {
+            // Fall through to IOS client
+        }
+    }
+
+    // 2. Try IOS client
+    let ios_client = create_ios_client(None);
+    let player_res = ios_client.player(video_id, context).await?;
+    if let Some(url) = extract_best_audio_url(&player_res) {
+        return Ok(url);
+    }
+
+    Err(ResolveError::NotPlayable(
+        "No suitable audio streams found in response".to_string(),
+    ))
+}
+
+fn extract_best_audio_url(player_res: &PlayerResponse) -> Option<String> {
+    let sd = player_res.streaming_data.as_ref()?;
+    let adaptive = sd.adaptive_formats.as_ref()?;
+
+    // Prioritize formats by itag
+    let itag_priority = |itag: u64| -> i32 {
+        match itag {
+            251 => 10, // Opus 160kbps
+            140 => 9,  // AAC 128kbps
+            250 => 8,  // Opus 70kbps
+            249 => 7,  // Opus 50kbps
+            139 => 6,  // AAC 48kbps
+            _ => 1,    // Any other audio
+        }
+    };
+
+    let mut candidate: Option<(String, i32)> = None;
+
+    for format in adaptive {
+        let is_audio = format
+            .mime_type
+            .as_ref()
+            .map(|m| m.mime.type_() == mime::AUDIO)
+            .unwrap_or(false);
+        if !is_audio {
+            continue;
+        }
+
+        if let Some(ref url) = format.url {
+            if url.is_empty() {
+                continue;
+            }
+            let itag = format.itag.unwrap_or(0);
+            let priority = itag_priority(itag);
+
+            if let Some((_, best_priority)) = candidate {
+                if priority > best_priority {
+                    candidate = Some((url.clone(), priority));
+                }
+            } else {
+                candidate = Some((url.clone(), priority));
+            }
+        }
+    }
+
+    candidate.map(|(url, _)| url)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -507,5 +587,26 @@ mod tests {
         assert!(res.is_ok());
         let player_res = res.unwrap();
         assert!(player_res.streaming_data.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_best_audio_stream() {
+        let ctx = ResolveContext::default();
+        let video_id = "dQw4w9WgXcQ";
+        let res = resolve_best_audio_stream(video_id, &ctx).await;
+        match &res {
+            Ok(url) => {
+                println!(
+                    "resolve_best_audio_stream succeeded! url starts with: {}",
+                    &url[..std::cmp::min(url.len(), 60)]
+                );
+            }
+            Err(e) => {
+                println!("resolve_best_audio_stream failed: {:?}", e);
+            }
+        }
+        assert!(res.is_ok());
+        let url = res.unwrap();
+        assert!(url.contains("googlevideo.com"));
     }
 }
