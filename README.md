@@ -7,11 +7,11 @@ Built using `serenity` and `poise`, this bot aims to be incredibly robust while 
 
 - **Slash + Prefix Commands**: Support for modern Discord interaction.
 - **High-Fidelity Audio Architecture**: Highly optimized audio streaming bypassing memory bottlenecks, with support for Deezer, Apple Music, Spotify, YouTube, and SoundCloud.
-- **Audio Filters**: 8D, Bassboost, Nightcore, Pitch, Speed tuning out of the box using FFmpeg.
+- **Audio Filters**: 8D audio effect out of the box using FFmpeg.
 - **Graceful Shutdown**: Safe teardown sequence via cancellation tokens to stop background tasks and write final database states to disk.
 - **Atomic Persistence**: Thread-safe atomic file writes with `.tmp` and `.bak` backup strategies to prevent data corruption.
 - **Strict Error Handling**: Custom typed domain errors (`SerenyaError`) propagated safely up to Poise boundaries.
-- **Low Memory Footprint**: Tailored for minimal resource environments (runs easily on a 1GB VPS). **Note**: The **only** bottleneck for speed is the local execution of `yt-dlp` to extract direct media streams, which is network and CPU dependent.
+- **Low Memory Footprint**: Tailored for minimal resource environments (runs easily on a 1GB VPS). **Note**: The **only** bottleneck for speed in the entire Rust codebase is the local execution of `yt-dlp` (which is written in Python) to extract direct media streams, which is network and CPU dependent.
 
 ## Tech Stack
 
@@ -25,42 +25,42 @@ Built using `serenity` and `poise`, this bot aims to be incredibly robust while 
 
 Serenya comes packed with essential and advanced playback tools:
 
-### 🎵 Playback
+### 🎵 Playback & Queue Management
 - `/play [query/url]` - Plays a song or playlist from Spotify, Deezer, Apple Music, YouTube, or SoundCloud.
 - `/search [query]` - Shows a dropdown of top search results from various providers to choose from.
 - `/pause` - Pauses the current track.
 - `/resume` - Resumes a paused track.
 - `/stop` - Stops playback and clears the queue.
-
-### 📋 Queue Management
-- `/queue` - Displays the current server queue (paginated).
 - `/skip` - Skips the currently playing track.
 - `/previous` - Plays the previously played track.
+- `/queue` - Displays the current server queue (paginated).
 - `/jump [position]` - Skips to a specific track in the queue.
 - `/remove [position]` - Removes a specific track from the queue.
 - `/move [from] [to]` - Moves a track from one position to another.
 - `/clear` - Clears all tracks from the queue except the one currently playing.
 - `/shuffle` - Shuffles the upcoming tracks in the queue.
 - `/loop [mode]` - Changes the loop mode (`Off`, `Track`, `Queue`).
+- `/seek [time]` / `/forward [seconds]` / `/rewind [seconds]` - Control the playback position.
+- `/replay` - Replays the current track from the beginning.
+- `/join` / `/leave` - Forces the bot to join or leave the voice channel.
 
 ### 🎛️ Audio Effects
 - `/8d [on|off]` - Toggles the 8D audio effect.
-- `/bassboost [level]` - Toggles or sets the bassboost level.
-- `/nightcore [on|off]` - Toggles the nightcore (speed + pitch) effect.
-- `/speed [multiplier]` - Adjusts the playback speed.
-- `/pitch [multiplier]` - Adjusts the playback pitch.
-- `/filter clear` - Clears all active audio filters.
 
 ### ℹ️ Information & Utilities
 - `/nowplaying` - Displays detailed information about the currently playing track.
 - `/lyrics [query]` - Fetches lyrics for the current song or a specific query.
 - `/songinfo` - Displays raw metadata for the current track.
 - `/ping` - Checks the bot's latency and connection status.
+- `/stats` - Displays global bot statistics (memory, active players, uptime).
+- `/help`, `/about`, `/invite`, `/support` - Useful bot information and links.
+- `/cleanup` - Resets the player state if the bot gets stuck.
 
 ### ⚙️ Settings
-- `/announce [on|off]` - Toggles "Now Playing" announcements in the channel.
-- `/stay_in_voice [on|off]` - Toggles whether the bot should stay in the voice channel when the queue ends.
-- `/default_volume [0-100]` - Sets the default playback volume for the server.
+- `/announce_track [on|off]` - Toggles "Now Playing" announcements in the channel.
+- `/quality [level]` - Changes the audio resolution quality (Low/Medium/High).
+- `/prefix [new_prefix]` - Changes the bot's prefix for the server.
+- `/reload` - Reloads the bot's configuration (Owner only).
 
 ## Getting Started
 
@@ -99,7 +99,14 @@ To ensure the bot displays these emojis properly:
 
 ### Running the Bot
 
-Run the bot using:
+If you downloaded the compiled Release (the `.exe` or Ubuntu binary) from the **Releases** tab:
+1. Put the executable in an empty folder.
+2. Open a terminal/command prompt in that folder and run the executable:
+   - On Windows: `.\serenya.exe`
+   - On Linux (Ubuntu VPS): `./serenya` (Make sure to run `chmod +x serenya` first).
+3. **Auto-Install:** Serenya will automatically download `ffmpeg` and `yt-dlp` into the folder if they are not detected on your system. It will also generate a blank `config.yml` file based on the template. Fill out the `config.yml` and run the bot again!
+
+If you are running from source code:
 
 ```bash
 cargo run --release

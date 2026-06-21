@@ -124,7 +124,22 @@ impl Default for ResolverSection {
 
 /// Loads, expands env vars, parses, and validates a YAML config file.
 pub fn load_config(path: &str) -> Result<BotConfig, SerenyaError> {
-    let raw = std::fs::read_to_string(path).map_err(SerenyaError::Io)?;
+    let raw = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let default_config = include_str!("../../config.example.yml");
+            if let Err(write_err) = std::fs::write(path, default_config) {
+                return Err(SerenyaError::Config(format!(
+                    "config.yml not found, and failed to create default config: {}", write_err
+                )));
+            }
+            return Err(SerenyaError::Config(format!(
+                "{} not found. A default config has been created. Please fill it out and restart the bot.", path
+            )));
+        }
+        Err(e) => return Err(SerenyaError::Io(e)),
+    };
+
     let expanded = expand_env_vars(&raw)?;
     let mut config: BotConfig = serde_saphyr::from_str(&expanded)
         .map_err(|e| SerenyaError::Config(format!("YAML parse error: {e}")))?;
