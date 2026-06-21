@@ -1,5 +1,13 @@
 use crate::utils::{Context, Error, SerenyaError};
 
+#[derive(Debug, poise::ChoiceParameter, Clone, Copy, PartialEq, Eq)]
+pub enum EightDMode {
+    #[name = "on"]
+    On,
+    #[name = "off"]
+    Off,
+}
+
 /// Toggle the per-guild 8D audio effect.
 #[poise::command(
     slash_command,
@@ -10,21 +18,12 @@ use crate::utils::{Context, Error, SerenyaError};
 )]
 pub async fn eight_d(
     ctx: Context<'_>,
-    #[description = "on or off"] mode: String,
+    #[description = "on or off"] mode: Option<EightDMode>,
 ) -> Result<(), Error> {
     ctx.defer().await?;
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| SerenyaError::Config("This command can only be used in a server.".into()))?;
-
-    let enabled = match mode.trim().to_ascii_lowercase().as_str() {
-        "on" => true,
-        "off" => false,
-        _ => {
-            ctx.say("Use `on` or `off`.").await?;
-            return Ok(());
-        }
-    };
 
     let player_lock = ctx
         .data()
@@ -34,6 +33,18 @@ pub async fn eight_d(
             std::sync::Arc::new(tokio::sync::RwLock::new(crate::core::GuildPlayer::new()))
         })
         .clone();
+
+    let enabled = if let Some(m) = mode {
+        match m {
+            EightDMode::On => true,
+            EightDMode::Off => false,
+        }
+    } else {
+        let player = player_lock.read().await;
+        !player.eight_d_enabled
+    };
+
+
 
     let player_lock_clone = player_lock.clone();
     let current_pos_opt = {
