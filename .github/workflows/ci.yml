@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ "main", "rust-1.96-upgrade", "reqwest-0.13" ]
+    branches: [ "main", "rust-1.96-upgrade", "reqwest-0.13", "workspace-ytdl-resolver" ]
   pull_request:
     branches: [ "main" ]
 

@@ -34,6 +34,6 @@ pub use structs::{
 #[cfg(feature = "ffmpeg")]
 pub use structs::FFmpegArgs;
 
-pub use utils::{choose_format, get_random_v6_ip, get_video_id};
+pub use utils::{choose_format, get_random_v6_ip, get_video_id, get_visitor_data, get_ytconfig};
 // export to access proxy feature
 pub use reqwest;
