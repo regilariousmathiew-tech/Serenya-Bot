@@ -465,7 +465,7 @@ pub fn create_ffmpeg_stream_input(
 
     if eight_d_enabled {
         args.push("-af".to_owned());
-        args.push("apulsator=hz=0.08:amount=0.85,freeverb=room_size=0.5:damp=0.5:wet_level=0.33:dry_level=1.0:width=1.0".to_owned());
+        args.push("apulsator=hz=0.08:amount=0.85,aecho=0.8:0.88:40:0.4".to_owned());
     }
 
     args.extend([
