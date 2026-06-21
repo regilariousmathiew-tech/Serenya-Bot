@@ -258,6 +258,7 @@ pub fn score_candidates(
     let query_lower = query.to_lowercase();
     let expected_title_lower = expected_title.to_lowercase();
     let clean_expected_title = clean_title(expected_title);
+    let expected_artist_lower = expected_artist.map(|a| a.to_lowercase());
     let mut scored = Vec::new();
 
     for (rank_idx, candidate) in candidates.into_iter().enumerate() {
@@ -312,14 +313,12 @@ pub fn score_candidates(
             .max(jaro_winkler_similarity(expected_title, &candidate.title));
 
         // 3. Artist Match Score (if expected artist exists)
-        let artist_similarity = if let Some(expected_art) = expected_artist {
-            let art_lower = expected_art.to_lowercase();
-            let channel_lower = candidate.artist.to_lowercase();
-
-            if channel_lower.contains(&art_lower) || art_lower.contains(&channel_lower) {
+        let candidate_artist_lower = candidate.artist.to_lowercase();
+        let artist_similarity = if let Some(ref art_lower) = expected_artist_lower {
+            if candidate_artist_lower.contains(art_lower.as_str()) || art_lower.contains(candidate_artist_lower.as_str()) {
                 1.0
             } else {
-                jaro_winkler_similarity(expected_art, &candidate.artist)
+                jaro_winkler_similarity(expected_artist.unwrap_or_default(), &candidate.artist)
             }
         } else {
             1.0
@@ -348,7 +347,7 @@ pub fn score_candidates(
         };
 
         // 5. Official / Topic channel boosts
-        let is_vevo = candidate.artist.to_lowercase().contains("vevo");
+        let is_vevo = candidate_artist_lower.contains("vevo");
         if candidate.is_official || candidate.is_topic_channel || is_vevo {
             score += 0.15;
         }
@@ -387,8 +386,7 @@ pub fn score_candidates(
                 if candidate_has_variant {
                     score += rule.penalty;
                 } else {
-                    let channel_lower = candidate.artist.to_lowercase();
-                    if title_similarity > 0.6 && channel_lower.len() > 3 && expected_title_lower.contains(&channel_lower) {
+                    if title_similarity > 0.6 && candidate_artist_lower.len() > 3 && expected_title_lower.contains(&candidate_artist_lower) {
                         score += rule.penalty;
                     }
                 }
@@ -420,8 +418,7 @@ pub fn score_candidates(
 
             if is_requested {
                 if !candidate_has_variant {
-                    let channel_lower = candidate.artist.to_lowercase();
-                    let channel_match = title_similarity > 0.6 && channel_lower.len() > 3 && expected_title_lower.contains(&channel_lower);
+                    let channel_match = title_similarity > 0.6 && candidate_artist_lower.len() > 3 && expected_title_lower.contains(&candidate_artist_lower);
                     if !channel_match {
                         final_score = (final_score - rule.penalty * 1.5).max(0.0);
                         tracing::debug!(
