@@ -456,7 +456,10 @@ pub fn play_next(
             .await
             .announce_track;
 
-        if announce_setting && let Some(channel) = announce_channel {
+        if advance
+            && announce_setting
+            && let Some(channel) = announce_channel
+        {
             let ctx_clone = serenity_ctx.clone();
             let config_clone = config.clone();
             tokio::spawn(async move {
@@ -573,14 +576,6 @@ pub fn schedule_prefetch(
     duration: Option<Duration>,
     http_client: reqwest::Client,
 ) {
-    let gp_clone = guild_players.clone();
-    let client_clone = http_client.clone();
-
-    // 1. Immediate prefetch to resolve next track search and stream URL right away
-    tokio::spawn(async move {
-        trigger_prefetch(guild_id, gp_clone, client_clone).await;
-    });
-
     let gp_clone2 = guild_players.clone();
     tokio::spawn(async move {
         if let Some(dur) = duration {

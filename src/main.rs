@@ -174,7 +174,9 @@ async fn run() -> Result<(), utils::Error> {
         | serenity::GatewayIntents::MESSAGE_CONTENT
         | serenity::GatewayIntents::GUILD_VOICE_STATES;
 
-    let songbird_config = songbird::Config::default().use_softclip(false);
+    let songbird_config = songbird::Config::default()
+        .use_softclip(false)
+        .preallocated_tracks(2);
     let mut client = serenity::ClientBuilder::new(&config.bot.token, intents)
         .framework(framework)
         .register_songbird_from_config(songbird_config)

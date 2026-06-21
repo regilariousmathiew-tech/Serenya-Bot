@@ -657,6 +657,8 @@ pub fn create_ffmpeg_stream_input(
         "1".to_owned(),
         "-reconnect_delay_max".to_owned(),
         "5".to_owned(),
+        "-multiple_requests".to_owned(),
+        "1".to_owned(),
         "-rw_timeout".to_owned(),
         "15000000".to_owned(), // 15s timeout for stalled reads/writes (in microseconds)
     ];
