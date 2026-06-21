@@ -25,10 +25,10 @@ pub mod search;
 
 pub use info::Video;
 pub use structs::{
-    Author, Chapter, ColorInfo, DownloadOptions, Embed, MimeType, RangeObject, RelatedVideo,
-    RequestOptions, StoryBoard, Thumbnail, VideoDetails, VideoError, VideoFormat, VideoInfo,
-    VideoOptions, VideoQuality, VideoSearchOptions, PlayerResponse, PlayabilityStatus,
-    StreamingData, StreamingDataFormat,
+    Author, Chapter, ColorInfo, DownloadOptions, Embed, MimeType, PlayabilityStatus,
+    PlayerResponse, RangeObject, RelatedVideo, RequestOptions, StoryBoard, StreamingData,
+    StreamingDataFormat, Thumbnail, VideoDetails, VideoError, VideoFormat, VideoInfo, VideoOptions,
+    VideoQuality, VideoSearchOptions,
 };
 
 #[cfg(feature = "ffmpeg")]

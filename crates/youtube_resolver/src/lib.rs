@@ -40,16 +40,16 @@ impl Default for ResolveContext {
 pub enum ResolveError {
     #[error("Network error: {0}")]
     Network(#[from] reqwest::Error),
-    
+
     #[error("Serialization/Deserialization error: {0}")]
     Serialization(#[from] serde_json::Error),
-    
+
     #[error("API error response: status={status:?}, reason={reason:?}")]
     ApiError {
         status: Option<String>,
         reason: Option<String>,
     },
-    
+
     #[error("Video not playable: {0}")]
     NotPlayable(String),
 
@@ -66,10 +66,10 @@ pub trait InnerTubeClient: Send + Sync {
     fn client_name(&self) -> &'static str;
     fn client_version(&self) -> String;
     fn user_agent(&self) -> String;
-    
+
     async fn player(
-        &self, 
-        video_id: &str, 
+        &self,
+        video_id: &str,
         context: &ResolveContext,
     ) -> Result<PlayerResponse, ResolveError>;
 }
@@ -107,7 +107,9 @@ impl BaseInnerTubeClient {
     }
 }
 
-pub async fn get_or_fetch_session(http_client: &reqwest::Client) -> Result<(String, u64), ResolveError> {
+pub async fn get_or_fetch_session(
+    http_client: &reqwest::Client,
+) -> Result<(String, u64), ResolveError> {
     {
         let cache = SESSION_CACHE.lock().unwrap();
         if let Some((ref visitor_data, sts, fetched_at)) = *cache {
@@ -137,7 +139,7 @@ pub async fn get_or_fetch_session(http_client: &reqwest::Client) -> Result<(Stri
             "CgtyckVza05NMXhtOCiV8-m_BjIKCgJWThIEGgAgSw==".to_string()
         }
     };
-    
+
     let sts = match rusty_ytdl::get_ytconfig(&res) {
         Ok(ytcfg) => {
             let s = ytcfg.sts.unwrap_or(19950);
@@ -177,8 +179,8 @@ impl InnerTubeClient for BaseInnerTubeClient {
     }
 
     async fn player(
-        &self, 
-        video_id: &str, 
+        &self,
+        video_id: &str,
         context: &ResolveContext,
     ) -> Result<PlayerResponse, ResolveError> {
         let http_client = reqwest::Client::builder()
@@ -196,7 +198,10 @@ impl InnerTubeClient for BaseInnerTubeClient {
             HeaderName::from_str("content-type").unwrap(),
             HeaderValue::from_str("application/json").unwrap(),
         );
-        let ua = context.user_agent_override.clone().unwrap_or_else(|| self.user_agent());
+        let ua = context
+            .user_agent_override
+            .clone()
+            .unwrap_or_else(|| self.user_agent());
         headers.insert(
             HeaderName::from_str("User-Agent").unwrap(),
             HeaderValue::from_str(&ua).unwrap(),
@@ -302,8 +307,14 @@ impl InnerTubeClient for BaseInnerTubeClient {
         // Check if the response contains an error block
         let raw_val: serde_json::Value = serde_json::from_str(&response_text)?;
         if let Some(error_block) = raw_val.get("error") {
-            let status = error_block.get("status").and_then(|s| s.as_str()).map(|s| s.to_string());
-            let reason = error_block.get("message").and_then(|m| m.as_str()).map(|m| m.to_string());
+            let status = error_block
+                .get("status")
+                .and_then(|s| s.as_str())
+                .map(|s| s.to_string());
+            let reason = error_block
+                .get("message")
+                .and_then(|m| m.as_str())
+                .map(|m| m.to_string());
             return Err(ResolveError::ApiError { status, reason });
         }
 
@@ -332,7 +343,10 @@ pub fn create_android_client(version: Option<String>) -> BaseInnerTubeClient {
         "ANDROID",
         "ANDROID",
         ver.clone(),
-        format!("com.google.android.youtube/{} (Linux; U; Android 11) gzip", ver),
+        format!(
+            "com.google.android.youtube/{} (Linux; U; Android 11) gzip",
+            ver
+        ),
         "3".to_string(),
         Some(json!({
             "osName": "Android",
@@ -364,7 +378,10 @@ pub fn create_ios_client(version: Option<String>) -> BaseInnerTubeClient {
         "IOS",
         "IOS",
         ver.clone(),
-        format!("com.google.ios.youtube/{} (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)", ver),
+        format!(
+            "com.google.ios.youtube/{} (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)",
+            ver
+        ),
         "5".to_string(),
         Some(json!({
             "deviceMake": "Apple",
@@ -389,21 +406,40 @@ mod tests {
         let res = client.player(video_id, &ctx).await;
         match &res {
             Ok(player_res) => {
-                println!("Android resolve succeeded! Playability status: {:?}", player_res.playability_status);
+                println!(
+                    "Android resolve succeeded! Playability status: {:?}",
+                    player_res.playability_status
+                );
                 if let Some(ref sd) = player_res.streaming_data {
                     let formats_len = sd.formats.as_ref().map(|f| f.len()).unwrap_or(0);
                     let adaptive_len = sd.adaptive_formats.as_ref().map(|f| f.len()).unwrap_or(0);
-                    println!("Formats count: {}, Adaptive formats count: {}", formats_len, adaptive_len);
-                    
+                    println!(
+                        "Formats count: {}, Adaptive formats count: {}",
+                        formats_len, adaptive_len
+                    );
+
                     if let Some(ref adaptive) = sd.adaptive_formats {
                         let mut audio_count = 0;
                         for f in adaptive {
-                            let is_audio = f.mime_type.as_ref().map(|m| m.mime.type_() == mime::AUDIO).unwrap_or(false);
+                            let is_audio = f
+                                .mime_type
+                                .as_ref()
+                                .map(|m| m.mime.type_() == mime::AUDIO)
+                                .unwrap_or(false);
                             if is_audio {
                                 audio_count += 1;
-                                println!("  Audio Format #{} - itag: {:?}, mime: {:?}, bitrate: {:?}, audioQuality: {:?}, sampleRate: {:?}, url starts with: {}", 
-                                    audio_count, f.itag, f.mime_type, f.bitrate, f.audio_quality, f.audio_sample_rate,
-                                    f.url.as_ref().map(|u| &u[..std::cmp::min(u.len(), 60)]).unwrap_or("None")
+                                println!(
+                                    "  Audio Format #{} - itag: {:?}, mime: {:?}, bitrate: {:?}, audioQuality: {:?}, sampleRate: {:?}, url starts with: {}",
+                                    audio_count,
+                                    f.itag,
+                                    f.mime_type,
+                                    f.bitrate,
+                                    f.audio_quality,
+                                    f.audio_sample_rate,
+                                    f.url
+                                        .as_ref()
+                                        .map(|u| &u[..std::cmp::min(u.len(), 60)])
+                                        .unwrap_or("None")
                                 );
                             }
                         }
@@ -428,20 +464,36 @@ mod tests {
         let res = client.player(video_id, &ctx).await;
         match &res {
             Ok(player_res) => {
-                println!("IOS resolve succeeded! Playability status: {:?}", player_res.playability_status);
+                println!(
+                    "IOS resolve succeeded! Playability status: {:?}",
+                    player_res.playability_status
+                );
                 if let Some(ref sd) = player_res.streaming_data {
                     let formats_len = sd.formats.as_ref().map(|f| f.len()).unwrap_or(0);
                     let adaptive_len = sd.adaptive_formats.as_ref().map(|f| f.len()).unwrap_or(0);
-                    println!("Formats count: {}, Adaptive formats count: {}", formats_len, adaptive_len);
-                    
+                    println!(
+                        "Formats count: {}, Adaptive formats count: {}",
+                        formats_len, adaptive_len
+                    );
+
                     if let Some(ref adaptive) = sd.adaptive_formats {
                         let mut audio_count = 0;
                         for f in adaptive {
-                            let is_audio = f.mime_type.as_ref().map(|m| m.mime.type_() == mime::AUDIO).unwrap_or(false);
+                            let is_audio = f
+                                .mime_type
+                                .as_ref()
+                                .map(|m| m.mime.type_() == mime::AUDIO)
+                                .unwrap_or(false);
                             if is_audio {
                                 audio_count += 1;
-                                println!("  IOS Audio Format #{} - itag: {:?}, mime: {:?}, bitrate: {:?}, audioQuality: {:?}, sampleRate: {:?}", 
-                                    audio_count, f.itag, f.mime_type, f.bitrate, f.audio_quality, f.audio_sample_rate
+                                println!(
+                                    "  IOS Audio Format #{} - itag: {:?}, mime: {:?}, bitrate: {:?}, audioQuality: {:?}, sampleRate: {:?}",
+                                    audio_count,
+                                    f.itag,
+                                    f.mime_type,
+                                    f.bitrate,
+                                    f.audio_quality,
+                                    f.audio_sample_rate
                                 );
                             }
                         }
