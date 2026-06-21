@@ -302,12 +302,12 @@ fn score_provider_candidates(
     for (candidate, score) in &mut scored {
         *score = (*score + get_priority_boost(&candidate.source, search_query)).clamp(0.0, 1.0);
 
-        // Apply highest priority boost for YouTube/YT Music/YT-DLP lyrics videos
+        // Apply a small priority boost for YouTube/YT Music/YT-DLP lyrics videos
         let is_yt = candidate.source == "YouTube" || candidate.source == "YouTube Music" || candidate.source == "yt-dlp";
         let title_lower = candidate.title.to_lowercase();
         let is_lyric = title_lower.contains("lyric") || title_lower.contains("lyrics");
         if is_yt && is_lyric {
-            *score += 10.0;
+            *score = (*score + 0.05).clamp(0.0, 1.0);
         }
 
         tracing::debug!(
@@ -857,15 +857,11 @@ async fn mirror_metadata(
     http_client: &reqwest::Client,
     source_provider: String,
 ) -> Result<ResolvedInput, SerenyaError> {
-    let mut search_query = if let Some(ref artist) = meta.artist {
+    let search_query = if let Some(ref artist) = meta.artist {
         format!("{} - {}", artist, meta.title)
     } else {
         meta.title.clone()
     };
-
-    if !search_query.to_lowercase().contains("lyric") {
-        search_query.push_str(" lyrics");
-    }
 
     tracing::info!(
         query = %search_query,
