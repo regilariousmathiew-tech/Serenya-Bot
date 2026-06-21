@@ -78,7 +78,7 @@ pub fn now_playing_embed(
     embed = embed.color(0x5865F2);
 
     if let Some(ref thumb) = track.thumbnail {
-        embed = embed.thumbnail(thumb);
+        embed = embed.thumbnail(thumb.to_string());
     }
     embed
 }
@@ -115,7 +115,7 @@ pub fn track_added_embed(track: &Track, queue_pos: usize) -> serenity::CreateEmb
         .color(0x57F287);
 
     if let Some(ref thumb) = track.thumbnail {
-        embed = embed.thumbnail(thumb);
+        embed = embed.thumbnail(thumb.to_string());
     }
     embed
 }

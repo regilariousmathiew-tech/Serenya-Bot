@@ -344,7 +344,6 @@ pub fn play_next(
             player.eight_d_enabled
         };
         let source = crate::audio::source::create_stream_input(
-            http_client.clone(),
             resolved.clone(),
             eight_d_enabled,
         )?;
@@ -385,7 +384,7 @@ pub fn play_next(
                 == Some(track.url.as_str())
             {
                 if let Some(ref mut np) = player.now_playing {
-                    np.resolved_url = Some(resolved.clone()); // Save the resolved URL!
+                    np.resolved_url = Some(resolved); // Save the resolved URL!
                 }
                 player.current_track_handle = Some(handle.clone());
                 player.playback_status = crate::core::PlaybackStatus::Playing;
@@ -428,9 +427,8 @@ pub fn play_next(
         if announce_setting {
             if let Some(channel) = announce_channel {
                 let ctx_clone = serenity_ctx.clone();
-                let track_clone = track.clone();
                 tokio::spawn(async move {
-                    let embed = now_playing_announce_embed(&track_clone);
+                    let embed = now_playing_announce_embed(&track);
                     let _ = channel
                         .send_message(
                             &ctx_clone.http,

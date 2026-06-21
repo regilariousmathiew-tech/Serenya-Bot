@@ -790,14 +790,15 @@ pub async fn resolve_input(
             let mut tracks = youtube_provider
                 .load(query_trimmed, user_id, http_client)
                 .await?;
-            if let Some(track) = tracks.first_mut() {
+            if !tracks.is_empty() {
+                let mut track = tracks.remove(0);
                 track.requester_id = serenity::UserId::new(user_id);
                 crate::audio::source::cache_set_url_metadata(
                     query_trimmed.to_owned(),
                     track.clone(),
                 )
                 .await;
-                Ok(ResolvedInput::Track(track.clone()))
+                Ok(ResolvedInput::Track(track))
             } else {
                 Err(SerenyaError::Audio(
                     "Failed to load YouTube track".to_owned(),
@@ -807,14 +808,15 @@ pub async fn resolve_input(
             let mut tracks = soundcloud_provider
                 .load(query_trimmed, user_id, http_client)
                 .await?;
-            if let Some(track) = tracks.first_mut() {
+            if !tracks.is_empty() {
+                let mut track = tracks.remove(0);
                 track.requester_id = serenity::UserId::new(user_id);
                 crate::audio::source::cache_set_url_metadata(
                     query_trimmed.to_owned(),
                     track.clone(),
                 )
                 .await;
-                Ok(ResolvedInput::Track(track.clone()))
+                Ok(ResolvedInput::Track(track))
             } else {
                 Err(SerenyaError::Audio(
                     "Failed to load SoundCloud track".to_owned(),
@@ -822,14 +824,15 @@ pub async fn resolve_input(
             }
         } else if direct_provider.supports(query_trimmed) {
             let mut tracks = direct_provider.load(query_trimmed, user_id).await?;
-            if let Some(track) = tracks.first_mut() {
+            if !tracks.is_empty() {
+                let mut track = tracks.remove(0);
                 track.requester_id = serenity::UserId::new(user_id);
                 crate::audio::source::cache_set_url_metadata(
                     query_trimmed.to_owned(),
                     track.clone(),
                 )
                 .await;
-                Ok(ResolvedInput::Track(track.clone()))
+                Ok(ResolvedInput::Track(track))
             } else {
                 Err(SerenyaError::Audio(
                     "Failed to load direct URL track".to_owned(),
@@ -917,7 +920,7 @@ fn evaluate_confidence_and_respond(
     original_query: &str,
     scored: Vec<(TrackCandidate, f64)>,
     user_id: u64,
-    forced_thumbnail: Option<String>,
+    forced_thumbnail: Option<std::sync::Arc<str>>,
     forced_title: Option<String>,
     forced_duration: Option<Duration>,
     source_provider: String,
@@ -1180,7 +1183,7 @@ async fn resolve_spotify_embed_fallback(
                 requester_name: "".to_owned(),
                 source_type: SourceType::Url,
                 resolved_url: None,
-                thumbnail: entity_thumbnail.clone(),
+                thumbnail: entity_thumbnail.clone().map(std::sync::Arc::from),
                 source_provider: "Spotify".to_owned(),
             });
         }
@@ -1453,7 +1456,7 @@ async fn resolve_spotify_playlist_api(
                 requester_name: "".to_owned(),
                 source_type: SourceType::Url,
                 resolved_url: None,
-                thumbnail,
+                thumbnail: thumbnail.map(std::sync::Arc::from),
                 source_provider: "Spotify".to_owned(),
             });
 
@@ -1647,7 +1650,7 @@ async fn resolve_spotify_album_api(
             requester_name: "".to_owned(),
             source_type: SourceType::Url,
             resolved_url: None,
-            thumbnail: thumbnail.clone(),
+            thumbnail: thumbnail.clone().map(std::sync::Arc::from),
             source_provider: "Spotify".to_owned(),
         });
 
@@ -1754,7 +1757,7 @@ async fn resolve_spotify_album_api(
                 requester_name: "".to_owned(),
                 source_type: SourceType::Url,
                 resolved_url: None,
-                thumbnail: thumbnail.clone(),
+                thumbnail: thumbnail.clone().map(std::sync::Arc::from),
                 source_provider: "Spotify".to_owned(),
             });
 
@@ -1965,7 +1968,7 @@ async fn resolve_spotify_artist_top_tracks_api(
             requester_name: "".to_owned(),
             source_type: SourceType::Url,
             resolved_url: None,
-            thumbnail,
+            thumbnail: thumbnail.map(std::sync::Arc::from),
             source_provider: "Spotify".to_owned(),
         });
     }
