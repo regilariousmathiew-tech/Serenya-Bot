@@ -14,7 +14,10 @@ async fn download_with_chunks() {
     let stream = match video.stream().await {
         Ok(s) => s,
         Err(e) => {
-            println!("Skipping test: stream resolution failed (likely YouTube bot protection): {:?}", e);
+            println!(
+                "Skipping test: stream resolution failed (likely YouTube bot protection): {:?}",
+                e
+            );
             return;
         }
     };
