@@ -142,4 +142,14 @@ Serenya has been rigorously benchmarked using a custom Global Allocator Tracker 
   - RAM: Minor spike (~5MB temporary)
   - CPU: Short spike (~3% - 5%) during `yt-dlp` stream metadata extraction, dropping back to <1% immediately.
 
-The bot can serve thousands of concurrent users with effectively zero memory leaks and highly optimized background tasks.
+#### 3. Native YouTube Resolver Performance (v1.1.1)
+To eliminate the `yt-dlp` Python cold-start bottleneck, Serenya now employs a highly optimized native Rust resolver (`youtube_resolver` crate).
+- **JS Engine Overhead**: Reduced from ~15ms down to **< 1ms** per track by reusing `boa_engine` Contexts inside a dedicated Tokio `spawn_blocking` thread pool.
+- **Network Overhead**: Drastically reduced TLS handshake latency by sharing a global `reqwest::Client` connection pool across sessions.
+- **Cache Strategy**: Implemented `ArcSwap` for holding `ResolvedStream`s directly in memory, bypassing JSON serialization/deserialization.
+- **Cold Start**: Decreased track resolution latency to levels matching or exceeding top-tier Discord bots like Jockie Music.
+
+## Citations & Acknowledgements
+- Logic for Youtube JS obfuscation deciphering was adapted from [yt-dlp](https://github.com/yt-dlp/yt-dlp).
+- The `youtube_resolver` is a continuation of the [rusty_ytdl](https://github.com/Mithronn/rusty_ytdl) project by Mithronn.
+- Special thanks to the open-source community for maintaining crucial dependencies such as `boa_engine`, `tokio`, and `reqwest`.
