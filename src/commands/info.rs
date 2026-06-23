@@ -103,9 +103,9 @@ async fn enqueue_selected_track(
         let mut call = call_lock.lock().await;
         let source = crate::audio::source::create_stream_input(
             Some(selected_track.url.clone()),
-            resolved_url,
+            &resolved_url,
             eight_d_enabled,
-        )?;
+        ).await?;
         let handle = call.play_input(source);
 
         let _ = handle.add_event(
@@ -224,7 +224,7 @@ pub async fn search(
             .next()
             .ok_or_else(|| SerenyaError::Audio("No playable track resolved.".into()))?;
         selected_track.requester_id = ctx.author().id;
-        selected_track.requester_name = ctx.author().name.clone();
+        selected_track.requester_name = Some(ctx.author().name.clone());
 
         let response_content = enqueue_selected_track(ctx, guild_id, selected_track).await?;
 

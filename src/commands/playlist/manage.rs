@@ -96,7 +96,7 @@ pub async fn info(
             url: t.url.clone(),
             duration: t.duration_secs.map(Duration::from_secs),
             requester_id: serenity::UserId::new(user_id),
-            requester_name: ctx.author().name.clone(),
+            requester_name: Some(ctx.author().name.clone()),
             source_type: crate::core::track::SourceType::Playlist,
             resolved_url: None,
             thumbnail: None,

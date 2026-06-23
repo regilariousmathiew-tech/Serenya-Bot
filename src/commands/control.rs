@@ -26,7 +26,7 @@ pub(crate) async fn seek_by_restart(
 
     let stream = match resolved_url {
         Some(stream) => stream,
-        None => crate::audio::source::extract_stream_url_for_guild(guild_id.get(), &url).await?,
+        None => std::sync::Arc::new(crate::audio::source::extract_stream_url_for_guild(guild_id.get(), &url).await?),
     };
 
     let eight_d_enabled = {
@@ -38,7 +38,7 @@ pub(crate) async fn seek_by_restart(
         &stream,
         Some(target_position),
         eight_d_enabled,
-    )?;
+    ).await?;
 
     // 3. Stop the current track and play the new input
     let manager = songbird::get(ctx.serenity_context())

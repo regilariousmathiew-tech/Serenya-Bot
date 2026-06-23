@@ -203,7 +203,7 @@ pub(crate) async fn get_spotify_session_info(
     timeout: std::time::Duration,
 ) -> Result<SpotifySessionInfo, SerenyaError> {
     let sp_dc = crate::audio::runtime::spotify_settings()
-        .and_then(|config| config.sp_dc)
+        .and_then(|config| config.sp_dc.clone())
         .filter(|cookie| !cookie.trim().is_empty())
         .ok_or_else(|| SerenyaError::Audio("Spotify sp_dc cookie is not configured.".to_owned()))?;
 
@@ -1122,7 +1122,7 @@ impl YouTubeProvider {
             url: url.to_owned(),
             duration: None,
             requester_id: serenity::UserId::new(user_id),
-            requester_name: "".to_owned(),
+            requester_name: None,
             source_type: SourceType::Url,
             resolved_url: None,
             thumbnail: thumbnail.map(std::sync::Arc::from),
@@ -1727,7 +1727,7 @@ impl SoundCloudProvider {
                         url: track_url,
                         duration,
                         requester_id: serenity::UserId::new(user_id),
-                        requester_name: "".to_owned(),
+                        requester_name: None,
                         source_type: SourceType::Playlist,
                         resolved_url: None,
                         thumbnail: meta.artwork_url.map(std::sync::Arc::from),
@@ -1748,7 +1748,7 @@ impl SoundCloudProvider {
                 url: final_url.to_owned(),
                 duration,
                 requester_id: serenity::UserId::new(user_id),
-                requester_name: "".to_owned(),
+                requester_name: None,
                 source_type: SourceType::Url,
                 resolved_url: None,
                 thumbnail: meta.artwork_url.map(std::sync::Arc::from),
@@ -1774,7 +1774,7 @@ impl DirectUrlProvider {
             url: input.to_owned(),
             duration: None,
             requester_id: serenity::UserId::new(user_id),
-            requester_name: "".to_owned(),
+            requester_name: None,
             source_type: SourceType::Url,
             resolved_url: None,
             thumbnail: None,
