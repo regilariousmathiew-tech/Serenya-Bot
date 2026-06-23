@@ -1,7 +1,8 @@
-use std::sync::Mutex;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
+use aho_corasick::AhoCorasick;
 
 static SECRETS_TO_REDACT: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+static REDACTOR: OnceLock<Mutex<Option<AhoCorasick>>> = OnceLock::new();
 
 pub fn register_secret_to_redact(secret: &str) {
     let trimmed = secret.trim();
@@ -9,26 +10,27 @@ pub fn register_secret_to_redact(secret: &str) {
         return;
     }
     let registry = SECRETS_TO_REDACT.get_or_init(|| Mutex::new(Vec::new()));
+    let redactor = REDACTOR.get_or_init(|| Mutex::new(None));
     if let Ok(mut guard) = registry.lock() {
         let sec = trimmed.to_owned();
         if !guard.contains(&sec) {
             guard.push(sec);
+            if let Ok(mut r_guard) = redactor.lock() {
+                *r_guard = AhoCorasick::new(guard.iter()).ok();
+            }
         }
     }
 }
 
 pub fn redact_secrets(input: &str) -> String {
-    let mut output = input.to_owned();
-    if let Some(registry) = SECRETS_TO_REDACT.get()
-        && let Ok(guard) = registry.lock()
-    {
-        for secret in guard.iter() {
-            if !secret.is_empty() {
-                output = output.replace(secret, "[REDACTED]");
+    if let Some(redactor_mutex) = REDACTOR.get() {
+        if let Ok(guard) = redactor_mutex.lock() {
+            if let Some(ac) = guard.as_ref() {
+                return ac.replace_all(input, &vec!["[REDACTED]"; ac.patterns_len()]);
             }
         }
     }
-    output
+    input.to_owned()
 }
 
 pub struct RedactingWriter<W> {
