@@ -1466,13 +1466,15 @@ pub async fn get_or_fetch_client_id(http_client: &reqwest::Client) -> Result<Str
 
     // 2. Write lock check (Double Checked Locking under Mutex)
     let _refresh_permit = SOUNDCLOUD_REFRESH_MUTEX.lock().await;
+    // Check again under Mutex
     {
-        let mut write_guard = SOUNDCLOUD_STATE.write().await;
-        if let Some(ref state) = *write_guard
+        let read_guard = SOUNDCLOUD_STATE.read().await;
+        if let Some(ref state) = *read_guard
             && state.obtained_at.elapsed() < Duration::from_secs(3600)
         {
             return Ok(state.client_id.clone());
         }
+    }
 
         tracing::info!("SoundCloud client_id is expired or None, fetching fresh one...");
         let url = "https://soundcloud.com";
@@ -1498,12 +1500,12 @@ pub async fn get_or_fetch_client_id(http_client: &reqwest::Client) -> Result<Str
             "Successfully extracted new SoundCloud client_id: {}",
             client_id
         );
+        let mut write_guard = SOUNDCLOUD_STATE.write().await;
         *write_guard = Some(ClientIdState {
             client_id: client_id.clone(),
             obtained_at: Instant::now(),
         });
         Ok(client_id)
-    }
 }
 
 fn regex_extract_client_id(html: &str) -> Option<String> {

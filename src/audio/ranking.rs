@@ -422,7 +422,7 @@ pub fn score_candidates(
         // Clamp base score to 1.0 before applying penalties
         let mut final_score = score.min(1.0);
 
-        // 9. Variant Penalties
+        // 11. Variant Penalties
         for rule in VARIANTS {
             let candidate_has_variant = candidate_title_lower.contains(rule.term);
             let is_requested = variant_requested(&query_lower, rule.term)
