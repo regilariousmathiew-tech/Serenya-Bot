@@ -39,10 +39,7 @@ pub fn reject_drm(formats: &[StreamingDataFormat]) -> Vec<StreamingDataFormat> {
         .collect()
 }
 
-/// Prefers WebM container with Opus codec, prioritized by high-quality itag first.
-/// - Itag 251: Opus 160kbps
-/// - Itag 250: Opus 70kbps
-/// - Itag 249: Opus 50kbps
+/// Prefers WebM container with Opus codec.
 pub fn prefer_opus_webm(formats: &[StreamingDataFormat]) -> Option<StreamingDataFormat> {
     let mut opus_formats: Vec<StreamingDataFormat> = formats
         .iter()
@@ -57,7 +54,6 @@ pub fn prefer_opus_webm(formats: &[StreamingDataFormat]) -> Option<StreamingData
         .cloned()
         .collect();
 
-    // Sort by priority of itag (highest itag first: 251 -> 250 -> 249 -> others)
     opus_formats.sort_by_key(|f| match f.itag {
         Some(251) => 3,
         Some(250) => 2,
@@ -68,9 +64,7 @@ pub fn prefer_opus_webm(formats: &[StreamingDataFormat]) -> Option<StreamingData
     opus_formats.last().cloned()
 }
 
-/// Falls back to M4A container with AAC codec, prioritized by high-quality itag first.
-/// - Itag 140: AAC 128kbps
-/// - Itag 139: AAC 48kbps
+/// Falls back to M4A container with AAC codec.
 pub fn fallback_m4a(formats: &[StreamingDataFormat]) -> Option<StreamingDataFormat> {
     let mut m4a_formats: Vec<StreamingDataFormat> = formats
         .iter()
@@ -85,7 +79,6 @@ pub fn fallback_m4a(formats: &[StreamingDataFormat]) -> Option<StreamingDataForm
         .cloned()
         .collect();
 
-    // Sort by priority of itag (highest first: 140 -> 139 -> others)
     m4a_formats.sort_by_key(|f| match f.itag {
         Some(140) => 2,
         Some(139) => 1,
@@ -97,19 +90,16 @@ pub fn fallback_m4a(formats: &[StreamingDataFormat]) -> Option<StreamingDataForm
 
 /// Detects if a format is damaged, incomplete, or corrupted.
 pub fn detect_damaged_format(format: &StreamingDataFormat) -> bool {
-    // 1. Missing all stream source URL/cipher attributes
     if format.url.is_none() && format.signature_cipher.is_none() && format.cipher.is_none() {
         return true;
     }
 
-    // 2. Corrupted content length (explicitly set to "0")
     if let Some(ref content_len) = format.content_length {
         if content_len == "0" {
             return true;
         }
     }
 
-    // 3. Bitrate is present but zero
     if let Some(bitrate) = format.bitrate {
         if bitrate == 0 {
             return true;
@@ -132,17 +122,14 @@ pub fn select_best_audio(formats: &[StreamingDataFormat]) -> Option<StreamingDat
         return None;
     }
 
-    // 1. Try Opus WebM first
     if let Some(best_opus) = prefer_opus_webm(&playable) {
         return Some(best_opus);
     }
 
-    // 2. Fallback to M4A AAC next
     if let Some(best_m4a) = fallback_m4a(&playable) {
         return Some(best_m4a);
     }
 
-    // 3. Otherwise, pick any playable format with highest bitrate
     playable.into_iter().max_by_key(|f| f.bitrate.unwrap_or(0))
 }
 
