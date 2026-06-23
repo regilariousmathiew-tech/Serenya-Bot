@@ -289,7 +289,9 @@ pub fn play_next(
         let resolved_res = match track.resolved_url.clone() {
             Some(url) => Ok(url),
             None => {
-                crate::audio::source::extract_stream_url_for_guild(guild_id.get(), &track.url).await
+                crate::audio::source::extract_stream_url_for_guild(guild_id.get(), &track.url)
+                    .await
+                    .map(std::sync::Arc::new)
             }
         };
 
@@ -378,9 +380,9 @@ pub fn play_next(
         };
         let source = crate::audio::source::create_stream_input(
             Some(track.url.clone()),
-            resolved.clone(),
+            &resolved,
             eight_d_enabled,
-        )?;
+        ).await?;
 
         let handle = {
             let mut call = call_lock.lock().await;
@@ -558,7 +560,7 @@ pub async fn trigger_prefetch(
             if let Some(track) = player.queue.get_mut(0)
                 && track.url == url_to_resolve
             {
-                track.resolved_url = Some(resolved_url);
+                track.resolved_url = Some(std::sync::Arc::new(resolved_url));
                 tracing::info!(guild_id = %guild_id, "Prefetch successful for: {}", track.title);
             }
         }

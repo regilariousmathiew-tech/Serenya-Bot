@@ -47,7 +47,7 @@ pub async fn play(
             url: t.url,
             duration: t.duration_secs.map(std::time::Duration::from_secs),
             requester_id: ctx.author().id,
-            requester_name: ctx.author().name.clone(),
+            requester_name: Some(ctx.author().name.clone()),
             source_type: crate::core::SourceType::Playlist,
             resolved_url: None,
             thumbnail: None,

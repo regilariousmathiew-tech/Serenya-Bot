@@ -203,7 +203,7 @@ pub(crate) async fn get_spotify_session_info(
     timeout: std::time::Duration,
 ) -> Result<SpotifySessionInfo, SerenyaError> {
     let sp_dc = crate::audio::runtime::spotify_settings()
-        .and_then(|config| config.sp_dc)
+        .and_then(|config| config.sp_dc.clone())
         .filter(|cookie| !cookie.trim().is_empty())
         .ok_or_else(|| SerenyaError::Audio("Spotify sp_dc cookie is not configured.".to_owned()))?;
 
@@ -1122,7 +1122,7 @@ impl YouTubeProvider {
             url: url.to_owned(),
             duration: None,
             requester_id: serenity::UserId::new(user_id),
-            requester_name: "".to_owned(),
+            requester_name: None,
             source_type: SourceType::Url,
             resolved_url: None,
             thumbnail: thumbnail.map(std::sync::Arc::from),
@@ -1466,13 +1466,15 @@ pub async fn get_or_fetch_client_id(http_client: &reqwest::Client) -> Result<Str
 
     // 2. Write lock check (Double Checked Locking under Mutex)
     let _refresh_permit = SOUNDCLOUD_REFRESH_MUTEX.lock().await;
+    // Check again under Mutex
     {
-        let mut write_guard = SOUNDCLOUD_STATE.write().await;
-        if let Some(ref state) = *write_guard
+        let read_guard = SOUNDCLOUD_STATE.read().await;
+        if let Some(ref state) = *read_guard
             && state.obtained_at.elapsed() < Duration::from_secs(3600)
         {
             return Ok(state.client_id.clone());
         }
+    }
 
         tracing::info!("SoundCloud client_id is expired or None, fetching fresh one...");
         let url = "https://soundcloud.com";
@@ -1498,12 +1500,12 @@ pub async fn get_or_fetch_client_id(http_client: &reqwest::Client) -> Result<Str
             "Successfully extracted new SoundCloud client_id: {}",
             client_id
         );
+        let mut write_guard = SOUNDCLOUD_STATE.write().await;
         *write_guard = Some(ClientIdState {
             client_id: client_id.clone(),
             obtained_at: Instant::now(),
         });
         Ok(client_id)
-    }
 }
 
 fn regex_extract_client_id(html: &str) -> Option<String> {
@@ -1727,7 +1729,7 @@ impl SoundCloudProvider {
                         url: track_url,
                         duration,
                         requester_id: serenity::UserId::new(user_id),
-                        requester_name: "".to_owned(),
+                        requester_name: None,
                         source_type: SourceType::Playlist,
                         resolved_url: None,
                         thumbnail: meta.artwork_url.map(std::sync::Arc::from),
@@ -1748,7 +1750,7 @@ impl SoundCloudProvider {
                 url: final_url.to_owned(),
                 duration,
                 requester_id: serenity::UserId::new(user_id),
-                requester_name: "".to_owned(),
+                requester_name: None,
                 source_type: SourceType::Url,
                 resolved_url: None,
                 thumbnail: meta.artwork_url.map(std::sync::Arc::from),
@@ -1774,7 +1776,7 @@ impl DirectUrlProvider {
             url: input.to_owned(),
             duration: None,
             requester_id: serenity::UserId::new(user_id),
-            requester_name: "".to_owned(),
+            requester_name: None,
             source_type: SourceType::Url,
             resolved_url: None,
             thumbnail: None,

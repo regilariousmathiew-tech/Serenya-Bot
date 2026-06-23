@@ -177,11 +177,11 @@ pub(crate) async fn enqueue_and_play_resolved(
         // Play first track immediately
         let mut first_track = tracks.remove(0);
         let requester_name = ctx.author().name.clone();
-        first_track.requester_name = requester_name.clone();
+        first_track.requester_name = Some(requester_name.clone());
 
         // Fix: set requester_name for all remaining tracks before queuing
         for t in &mut tracks {
-            t.requester_name = requester_name.clone();
+            t.requester_name = Some(requester_name.clone());
         }
 
         player.now_playing = Some(first_track.clone());
@@ -316,9 +316,9 @@ pub(crate) async fn enqueue_and_play_resolved(
             };
             let source = match crate::audio::source::create_stream_input(
                 Some(current_track.url.clone()),
-                resolved_url.clone(),
+                &resolved_url,
                 eight_d_enabled,
-            ) {
+            ).await {
                 Ok(source) => source,
                 Err(err) => {
                     tracing::error!(guild_id = %guild_id, %err, "Failed to create audio input");
@@ -360,7 +360,7 @@ pub(crate) async fn enqueue_and_play_resolved(
                 && let Some(ref mut current) = player.now_playing
                 && (current.url == current_track.url || current.url == original_url)
             {
-                current.resolved_url = Some(resolved_url);
+                current.resolved_url = Some(std::sync::Arc::new(resolved_url));
                 player.current_track_handle = Some(handle);
                 crate::audio::events::schedule_prefetch(
                     guild_id,
@@ -437,7 +437,7 @@ pub(crate) async fn enqueue_and_play_resolved(
         // Populate requester names
         let requester_name = ctx.author().name.clone();
         for t in &mut tracks {
-            t.requester_name = requester_name.clone();
+            t.requester_name = Some(requester_name.clone());
         }
 
         let added = player.queue.push_batch(tracks, max_queue_size)?;

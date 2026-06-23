@@ -1,6 +1,7 @@
 use std::process::Output;
 use std::sync::{Arc, LazyLock, RwLock};
 use std::time::{Duration, Instant};
+use arc_swap::{ArcSwap, ArcSwapOption};
 
 use dashmap::DashMap;
 use moka::future::Cache;
@@ -14,13 +15,13 @@ const YOUTUBE_RATE_LIMIT_COOLDOWN: Duration = Duration::from_secs(60 * 60);
 #[derive(Clone, Debug)]
 pub struct NegativeCacheEntry {
     pub reason: String,
-    inserted_at: Instant,
 }
 
 struct ResolverRuntime {
-    settings: RwLock<ResolverSection>,
-    spotify_settings: RwLock<Option<crate::config::SpotifySection>>,
+    settings: ArcSwap<ResolverSection>,
+    spotify_settings: ArcSwapOption<crate::config::SpotifySection>,
     ytdlp_semaphore: RwLock<Arc<Semaphore>>,
+    soundcloud_semaphore: RwLock<Arc<Semaphore>>,
     guild_resolve_semaphores: DashMap<u64, Arc<Semaphore>>,
     negative_cache: Cache<String, NegativeCacheEntry>,
     youtube_degraded_until: RwLock<Option<Instant>>,
@@ -31,10 +32,14 @@ impl ResolverRuntime {
         let settings = ResolverSection::default();
         Self {
             ytdlp_semaphore: RwLock::new(Arc::new(Semaphore::new(settings.max_concurrent_ytdlp))),
-            settings: RwLock::new(settings),
-            spotify_settings: RwLock::new(None),
+            soundcloud_semaphore: RwLock::new(Arc::new(Semaphore::new(settings.max_concurrent_soundcloud))),
             guild_resolve_semaphores: DashMap::new(),
-            negative_cache: Cache::builder().max_capacity(4096).build(),
+            negative_cache: Cache::builder()
+                .max_capacity(4096)
+                .time_to_live(Duration::from_secs(settings.negative_cache_ttl_seconds))
+                .build(),
+            settings: ArcSwap::from_pointee(settings),
+            spotify_settings: ArcSwapOption::const_empty(),
             youtube_degraded_until: RwLock::new(None),
         }
     }
@@ -43,14 +48,13 @@ impl ResolverRuntime {
 static RESOLVER_RUNTIME: LazyLock<ResolverRuntime> = LazyLock::new(ResolverRuntime::new);
 
 pub fn configure(settings: &ResolverSection, spotify: &crate::config::SpotifySection) {
-    if let Ok(mut current) = RESOLVER_RUNTIME.settings.write() {
-        *current = settings.clone();
-    }
-    if let Ok(mut current) = RESOLVER_RUNTIME.spotify_settings.write() {
-        *current = Some(spotify.clone());
-    }
+    RESOLVER_RUNTIME.settings.store(Arc::new(settings.clone()));
+    RESOLVER_RUNTIME.spotify_settings.store(Some(Arc::new(spotify.clone())));
     if let Ok(mut semaphore) = RESOLVER_RUNTIME.ytdlp_semaphore.write() {
         *semaphore = Arc::new(Semaphore::new(settings.max_concurrent_ytdlp));
+    }
+    if let Ok(mut semaphore) = RESOLVER_RUNTIME.soundcloud_semaphore.write() {
+        *semaphore = Arc::new(Semaphore::new(settings.max_concurrent_soundcloud));
     }
     RESOLVER_RUNTIME.guild_resolve_semaphores.clear();
 }
@@ -59,21 +63,12 @@ pub fn cleanup_guild(guild_id: u64) {
     RESOLVER_RUNTIME.guild_resolve_semaphores.remove(&guild_id);
 }
 
-pub fn settings() -> ResolverSection {
-    RESOLVER_RUNTIME
-        .settings
-        .read()
-        .map(|settings| settings.clone())
-        .unwrap_or_default()
+pub fn settings() -> Arc<ResolverSection> {
+    RESOLVER_RUNTIME.settings.load().clone()
 }
 
-pub fn spotify_settings() -> Option<crate::config::SpotifySection> {
-    RESOLVER_RUNTIME
-        .spotify_settings
-        .read()
-        .map(|guard| guard.clone())
-        .ok()
-        .flatten()
+pub fn spotify_settings() -> Option<Arc<crate::config::SpotifySection>> {
+    RESOLVER_RUNTIME.spotify_settings.load().clone()
 }
 
 pub fn duration_from_millis(ms: u64) -> Duration {
@@ -84,9 +79,7 @@ pub fn yt_dlp_timeout() -> Duration {
     Duration::from_secs(settings().yt_dlp_timeout_seconds.max(1))
 }
 
-pub fn ytdlp_enabled() -> bool {
-    true
-}
+
 
 pub fn prefetch_timeout() -> Duration {
     Duration::from_secs(settings().prefetch_timeout_seconds.max(1))
@@ -104,11 +97,10 @@ pub fn try_acquire_guild_resolve(guild_id: u64) -> Option<OwnedSemaphorePermit> 
 }
 
 fn guild_resolve_semaphore(guild_id: u64) -> Arc<Semaphore> {
-    let max = settings().max_concurrent_resolves_per_guild.max(1);
     RESOLVER_RUNTIME
         .guild_resolve_semaphores
         .entry(guild_id)
-        .or_insert_with(|| Arc::new(Semaphore::new(max)))
+        .or_insert_with(|| Arc::new(Semaphore::new(settings().max_concurrent_resolves_per_guild.max(1))))
         .clone()
 }
 
@@ -125,6 +117,19 @@ async fn acquire_ytdlp() -> Result<OwnedSemaphorePermit, SerenyaError> {
         .map_err(|_| SerenyaError::Audio("yt-dlp limiter is closed".into()))
 }
 
+pub async fn acquire_soundcloud_resolve() -> Result<OwnedSemaphorePermit, SerenyaError> {
+    let semaphore = RESOLVER_RUNTIME
+        .soundcloud_semaphore
+        .read()
+        .map(|semaphore| semaphore.clone())
+        .map_err(|_| SerenyaError::Audio("SoundCloud limiter is poisoned".into()))?;
+
+    semaphore
+        .acquire_owned()
+        .await
+        .map_err(|_| SerenyaError::Audio("SoundCloud limiter is closed".into()))
+}
+
 pub async fn run_ytdlp(
     context: &'static str,
     args: Vec<String>,
@@ -132,13 +137,6 @@ pub async fn run_ytdlp(
     youtube_sensitive: bool,
     negative_cache_key: Option<String>,
 ) -> Result<Output, SerenyaError> {
-    if !ytdlp_enabled() {
-        tracing::warn!(context, "yt-dlp is temporarily disabled");
-        return Err(SerenyaError::Audio(
-            "yt-dlp is temporarily disabled".to_owned(),
-        ));
-    }
-
     if youtube_sensitive && is_youtube_degraded() {
         return Err(youtube_degraded_error());
     }
@@ -256,19 +254,12 @@ fn clear_youtube_degraded_if_expired() {
 pub async fn remember_negative(key: String, reason: String) {
     let entry = NegativeCacheEntry {
         reason,
-        inserted_at: Instant::now(),
     };
     RESOLVER_RUNTIME.negative_cache.insert(key, entry).await;
 }
 
 pub async fn negative_cache_get(key: &str) -> Option<NegativeCacheEntry> {
-    let entry = RESOLVER_RUNTIME.negative_cache.get(key).await?;
-    if entry.inserted_at.elapsed().as_secs() <= settings().negative_cache_ttl_seconds {
-        return Some(entry);
-    }
-
-    RESOLVER_RUNTIME.negative_cache.invalidate(key).await;
-    None
+    RESOLVER_RUNTIME.negative_cache.get(key).await
 }
 
 pub fn negative_cache_key(namespace: &str, id: &str) -> String {

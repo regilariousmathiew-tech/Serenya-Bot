@@ -21,7 +21,7 @@ use crate::database::DatabaseManager;
 
 /// Shared application state accessible from all command handlers.
 pub struct Data {
-    pub config: std::sync::RwLock<Arc<BotConfig>>,
+    pub config: arc_swap::ArcSwap<BotConfig>,
     pub database: Arc<DatabaseManager>,
     pub guild_players: Arc<
         DashMap<serenity::GuildId, std::sync::Arc<tokio::sync::RwLock<crate::core::GuildPlayer>>>,
@@ -32,22 +32,18 @@ pub struct Data {
 
 impl Data {
     pub fn config(&self) -> Arc<BotConfig> {
-        self.config.read().unwrap().clone()
+        self.config.load().clone()
     }
 }
 
-#[tokio::main]
-async fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
-    if let Err(err) = run().await {
-        eprintln!("Fatal error: {err}");
-        std::process::exit(1);
-    }
+    configure_path();
+    tokio::runtime::Runtime::new().unwrap().block_on(run())
 }
 
-async fn run() -> Result<(), utils::Error> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     installer::ensure_dependencies().await;
-    configure_path();
 
     let config = Arc::new(config::load_config("config.yml").await?);
 
@@ -161,7 +157,7 @@ async fn run() -> Result<(), utils::Error> {
                 start_empty_room_monitor(guild_players.clone(), ctx.http.clone());
 
                 Ok(Data {
-                    config: std::sync::RwLock::new(config_clone),
+                    config: arc_swap::ArcSwap::new(config_clone),
                     database: database_clone,
                     guild_players,
                     http_client,
@@ -188,6 +184,13 @@ async fn run() -> Result<(), utils::Error> {
         "Serenya is ready"
     );
 
+    #[cfg(unix)]
+    let sigterm_future = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap().recv().await;
+    };
+    #[cfg(not(unix))]
+    let sigterm_future = std::future::pending::<()>();
+
     tokio::select! {
         result = client.start() => {
             if let Err(err) = result {
@@ -196,6 +199,9 @@ async fn run() -> Result<(), utils::Error> {
         }
         _ = tokio::signal::ctrl_c() => {
             info!("Shutdown signal received (ctrl+c)");
+        }
+        _ = sigterm_future => {
+            info!("Shutdown signal received (SIGTERM)");
         }
     }
 
@@ -358,17 +364,19 @@ fn start_empty_room_monitor(
 
             // Phase 2: Check each guild individually — get() locks only one shard at a time
             for guild_id in guild_ids {
-                if let Some(player_lock) = guild_players.get(&guild_id) {
-                    let player = player_lock.read().await;
-                    if let Some(empty_since) = player.empty_since
-                        && now.duration_since(empty_since).as_secs() >= 10800
+                let player_lock = match guild_players.get(&guild_id) {
+                    Some(p) => p.value().clone(),
+                    None => continue,
+                };
+                let player = player_lock.read().await;
+                if let Some(empty_since) = player.empty_since
+                    && now.duration_since(empty_since).as_secs() >= 10800
+                {
+                    // 3 hours
+                    if !player.queue.is_empty()
+                        || player.playback_status != crate::core::PlaybackStatus::Idle
                     {
-                        // 3 hours
-                        if !player.queue.is_empty()
-                            || player.playback_status != crate::core::PlaybackStatus::Idle
-                        {
-                            to_clear.push((guild_id, player.announce_channel));
-                        }
+                        to_clear.push((guild_id, player.announce_channel));
                     }
                 }
             }
@@ -414,7 +422,7 @@ async fn handle_voice_state_update(
 
     // 1. Get the guild player. If there is no player, we don't care.
     let player_lock = match data.guild_players.get(&guild_id) {
-        Some(p) => p.clone(),
+        Some(p) => p.value().clone(),
         None => return Ok(()),
     };
 
@@ -426,7 +434,16 @@ async fn handle_voice_state_update(
     // 3. Get the bot's current voice channel
     let bot_channel_id = match player.voice_channel {
         Some(c) => c,
-        None => return Ok(()),
+        None => {
+            // If the bot has left the voice channel and queue is empty, remove player memory
+            if player.queue.is_empty() && player.playback_status == crate::core::PlaybackStatus::Idle {
+                drop(player);
+                data.guild_players.remove(&guild_id);
+                crate::audio::runtime::cleanup_guild(guild_id.get());
+                tracing::info!(guild_id = %guild_id, "Bot is not in voice and queue is empty, removed GuildPlayer");
+            }
+            return Ok(());
+        }
     };
 
     // 4. Get bot user ID
@@ -461,8 +478,9 @@ async fn handle_voice_state_update(
         if player.playback_status == crate::core::PlaybackStatus::Playing
             && let Some(ref handle) = player.current_track_handle
         {
-            if let Err(e) = handle.pause() {
+            let should_announce = if let Err(e) = handle.pause() {
                 tracing::error!("Failed to auto-pause track in empty channel: {:?}", e);
+                false
             } else {
                 player.playback_status = crate::core::PlaybackStatus::Paused;
                 info!(
@@ -470,12 +488,18 @@ async fn handle_voice_state_update(
                     channel_id = %bot_channel_id,
                     "Playback auto-paused because voice channel is empty"
                 );
+                true
+            };
 
-                if let Some(announce_channel) = player.announce_channel {
+            let announce_channel = player.announce_channel;
+            drop(player); // Release the write lock before sending HTTP request
+
+            if should_announce {
+                if let Some(ch) = announce_channel {
                     let embed = serenity::CreateEmbed::new()
                             .description("Không có ai trong room nên âm nhạc sẽ tạm dừng `s.resume` để tiếp tục từ chỗ đã stop")
                             .color(0x5865F2);
-                    let _ = announce_channel
+                    let _ = ch
                         .send_message(&ctx.http, serenity::CreateMessage::new().embed(embed))
                         .await;
                 }

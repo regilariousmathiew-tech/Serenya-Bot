@@ -99,7 +99,7 @@ pub fn now_playing_embed(
         } else {
             format!("{} **{}**", provider_emoji, track.title)
         })
-        .field("Requested By", &track.requester_name, true)
+        .field("Requested By", track.requester_name.as_deref().unwrap_or("Unknown"), true)
         .field("Duration", duration_str, true)
         .field("Source", track.clean_source(), true);
 
@@ -164,7 +164,7 @@ pub fn track_added_embed(
         } else {
             format!("{} **{}**", provider_emoji, track.title)
         })
-        .field("Requested By", &track.requester_name, true)
+        .field("Requested By", track.requester_name.as_deref().unwrap_or("Unknown"), true)
         .field("Duration", duration_str, true)
         .field("Queue Position", format!("#{}", queue_pos), true)
         .field("Source", track.clean_source(), true)
@@ -192,11 +192,7 @@ pub fn queue_embed(
             .map(format_duration)
             .unwrap_or_else(|| "Live".to_string());
         let emoji = if page == 0 && i == 0 { "🔊" } else { "🎵" };
-        let requester = if track.requester_name.is_empty() {
-            "Unknown".to_string()
-        } else {
-            track.requester_name.clone()
-        };
+        let requester = track.requester_name.as_deref().unwrap_or("Unknown");
         desc.push_str(&format!(
             "{} `{:02}.` **{}** — `{}`\n╰ Requested by **{}**\n",
             emoji, index, track.title, duration, requester
