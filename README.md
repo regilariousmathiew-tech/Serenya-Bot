@@ -28,15 +28,6 @@ Serenya Bot is a Rust-based Discord music bot built for stable playback, low lat
 - Graceful shutdown and atomic database writes through `.tmp` and `.bak` files.
 - Typed domain errors through `SerenyaError`, converted to boxed framework errors only at command boundaries when needed.
 
-## Performance & Optimizations (v1.1.1)
-
-Version 1.1.1 introduces significant performance optimizations and architectural improvements over the v1.1.0 baseline:
-- **Zero Deadlocks**: Safely resolved deadlocks caused by concurrent `DashMap` read locks in the monitor and statistics threads. 
-- **Non-blocking Execution**: Eliminated `tokio` runtime thread-blocking during `ffmpeg` child process spawning using `tokio::task::spawn_blocking`, and moved synchronous startup initialization tasks (like `configure_path`) out of the main async context.
-- **Lock-free Data Access**: Integrated `arc-swap` to eliminate `RwLock` bottlenecks when querying dynamic runtime and Spotify configuration settings.
-- **Memory & Allocation Efficiency**: Upgraded the `Track` core data structure from `String` allocations to lightweight `Option<String>` and `Arc<ResolvedStream>` patterns to drastically reduce allocation overhead on metadata resolution operations.
-- **O(N) Secret Redaction**: Replaced costly sequential `replace()` calls in the logging module with the `aho-corasick` crate, delivering optimal time-complexity when filtering logging secrets.
-
 ## Native YouTube Resolver
 
 Serenya includes the internal `youtube_resolver` crate as the native replacement layer for YouTube stream resolution.
@@ -127,17 +118,6 @@ Main config sections:
 - `playback`: queue limits, playlist limits, and announcement settings.
 - `resolver`: timeouts, concurrency limits, cache TTLs, and ranking thresholds.
 - `emojis`: custom embed emojis.
-
-### Tokens And Secrets
-
-`config.yml` contains real secrets and must not be committed. The repository ignores `config.yml`, `database.yml`, `document/`, and `rule.md`.
-
-Do not share:
-
-- Discord bot token.
-- Spotify `sp_dc`.
-- Webhook URL.
-- `database.yml` if it contains real server or user data.
 
 ### Getting Spotify `sp_dc`
 

@@ -42,29 +42,29 @@ pub async fn shutdown() {
     }
 }
 
-fn get_emoji_and_color(level: Level, message: &str) -> (&'static str, u32) {
+fn get_emoji_tag_and_color(level: Level, message: &str) -> (&'static str, &'static str, u32) {
     let msg_lower = message.to_lowercase();
     match level {
-        Level::ERROR => ("🔴", 0xED4245),
-        Level::WARN => ("🟡", 0xFEE75C),
+        Level::ERROR => ("🔴", "ERROR", 0xED4245),
+        Level::WARN => ("🟡", "WARN", 0xFEE75C),
         Level::INFO => {
             if msg_lower.contains("starting")
                 || msg_lower.contains("ready")
                 || msg_lower.contains("register")
                 || msg_lower.contains("loaded")
             {
-                ("🟢", 0x2ECC71) // Green for start/init
+                ("🟢", "START", 0x2ECC71) // Green for start/init
             } else if msg_lower.contains("shutdown")
                 || msg_lower.contains("shut down")
                 || msg_lower.contains("signal received")
             {
-                ("🟠", 0xE67E22) // Orange for shutdown
+                ("🟠", "SHUTDOWN", 0xE67E22) // Orange for shutdown
             } else {
-                ("🔵", 0x3498DB) // Blue for normal info
+                ("🔵", "INFO", 0x3498DB) // Blue for normal info
             }
         }
-        Level::DEBUG => ("⚙️", 0x979C9F),
-        Level::TRACE => ("🧬", 0x979C9F),
+        Level::DEBUG => ("⚙️", "DEBUG", 0x979C9F),
+        Level::TRACE => ("🧬", "TRACE", 0x979C9F),
     }
 }
 
@@ -189,10 +189,10 @@ async fn send_batch(
                 .target
                 .strip_prefix("serenya::")
                 .unwrap_or(&entry.target);
-            let (emoji, _) = get_emoji_and_color(entry.level, &entry.message);
+            let (emoji, tag, _) = get_emoji_tag_and_color(entry.level, &entry.message);
             let log_line = format!(
                 "{} **[{}]** `{}`: {}\n",
-                emoji, entry.level, target_clean, msg_truncated
+                emoji, tag, target_clean, msg_truncated
             );
 
             // Redact secrets in the log line!
@@ -213,12 +213,12 @@ async fn send_batch(
     } else {
         let mut embeds = Vec::new();
         for entry in entries {
-            let (emoji, color) = get_emoji_and_color(entry.level, &entry.message);
+            let (emoji, tag, color) = get_emoji_tag_and_color(entry.level, &entry.message);
             let target_clean = entry
                 .target
                 .strip_prefix("serenya::")
                 .unwrap_or(&entry.target);
-            let title = format!("{} {} — {}", emoji, entry.level, target_clean);
+            let title = format!("{} {} — {}", emoji, tag, target_clean);
             let description = crate::utils::truncate_chars(&entry.message, 1997);
             // Redact secrets in the description!
             let description_redacted = crate::logging::redact_secrets(&description);

@@ -38,6 +38,7 @@ impl Data {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     configure_path();
+    // Install the default CryptoProvider for rustls to prevent panic when both aws-lc-rs and ring features are enabled in the workspace
     let _ = rustls::crypto::ring::default_provider().install_default();
     tokio::runtime::Runtime::new().unwrap().block_on(run())
 }
@@ -61,11 +62,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     audio::runtime::configure(&config.resolver, &config.spotify);
     init_tracing(&config.logging);
-    info!("Starting Serenya...");
-    info!(instance_id = %config.bot.instance_id, "Configuration loaded");
+    info!(target: "start", "Starting Serenya...");
+    info!(target: "start", instance_id = %config.bot.instance_id, "Configuration loaded");
 
     let database = Arc::new(DatabaseManager::load("database.yml").await?);
-    info!("Database loaded");
+    info!(target: "start", "Database loaded");
 
     let cancel_token = CancellationToken::new();
     let auto_save_handle =
@@ -186,7 +187,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .setup(move |ctx, _ready, framework| {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                info!("Slash commands registered globally");
+                info!(target: "start", "Slash commands registered globally");
 
                 let guild_players = std::sync::Arc::new(DashMap::new());
 
@@ -216,6 +217,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     info!(
+        target: "start",
         display_name = %config.bot.display_name,
         "Serenya is ready"
     );
@@ -237,10 +239,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         _ = tokio::signal::ctrl_c() => {
-            info!("Shutdown signal received (ctrl+c)");
+            info!(target: "shutdown", "Shutdown signal received (ctrl+c)");
         }
         _ = sigterm_future => {
-            info!("Shutdown signal received (SIGTERM)");
+            info!(target: "shutdown", "Shutdown signal received (SIGTERM)");
         }
     }
 
@@ -253,7 +255,7 @@ async fn shutdown(
     auto_save_handle: tokio::task::JoinHandle<()>,
     database: &DatabaseManager,
 ) {
-    info!("Initiating graceful shutdown...");
+    info!(target: "shutdown", "Initiating graceful shutdown...");
 
     cancel_token.cancel();
 
@@ -266,7 +268,7 @@ async fn shutdown(
         error!(%err, "Failed to save database during shutdown");
     }
 
-    info!("Serenya shut down gracefully");
+    info!(target: "shutdown", "Serenya shut down gracefully");
 
     // Flush webhook logs before exiting
     crate::logging::webhook::shutdown().await;

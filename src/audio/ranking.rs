@@ -166,16 +166,6 @@ const VARIANTS: &[VariantRule] = &[
         penalty: 0.40,
         hard_reject_with_duration: false,
     },
-    VariantRule {
-        term: "official video",
-        penalty: 0.15,
-        hard_reject_with_duration: false,
-    },
-    VariantRule {
-        term: "music video",
-        penalty: 0.15,
-        hard_reject_with_duration: false,
-    },
 ];
 
 fn variant_requested(query_lower: &str, term: &str) -> bool {
@@ -322,10 +312,17 @@ pub fn score_candidates(
 
         // 2. Title Match Score
         let clean_cand_title_lower = clean_title(&candidate.title).to_lowercase();
-        let title_similarity =
+        let mut title_similarity =
             strsim::jaro_winkler(&clean_expected_title_lower, &clean_cand_title_lower).max(
                 strsim::jaro_winkler(&expected_title_lower, &candidate_title_lower),
             );
+
+        // Substring / exact containment boost: if candidate title contains expected title, it's a very strong match
+        let contains_exact = clean_cand_title_lower.contains(&clean_expected_title_lower)
+            || candidate_title_lower.contains(&expected_title_lower);
+        if contains_exact && !clean_expected_title_lower.is_empty() {
+            title_similarity = title_similarity.max(0.95);
+        }
 
         // 3. Artist Match Score (if expected artist exists)
         let candidate_artist_lower = candidate.artist.to_lowercase();
@@ -363,36 +360,36 @@ pub fn score_candidates(
             title_similarity * 0.8 + duration_similarity * 0.2
         };
 
-        // 5. Official / Topic channel boosts
+        // 5. Official / Topic channel boosts (scaled by title similarity to avoid boosting wrong titles)
         let is_vevo = candidate_artist_lower.contains("vevo");
         if candidate.is_official || candidate.is_topic_channel || is_vevo {
-            score += 0.15;
+            score += 0.15 * title_similarity;
         }
 
-        // 5b. Lyric video boost (often contains original high-quality audio)
+        // 5b. Lyric video boost (scaled by title similarity)
         let is_lyric =
             candidate_title_lower.contains("lyric") || candidate_title_lower.contains("lyrics");
         if is_lyric && title_similarity > 0.5 {
-            score += 0.10;
+            score += 0.10 * title_similarity;
         }
 
-        // 6. Popularity boost (view count logarithmic scale)
+        // 6. Popularity boost (scaled by title similarity)
         if let Some(views) = candidate.popularity {
             let view_log = (views as f64).ln().max(0.0);
             let view_score = (view_log / 18.0).min(1.0); // ln(65M) ≈ 18
-            score += view_score * 0.05;
+            score += view_score * 0.05 * title_similarity;
         } else {
-            score += 0.02; // neutral boost if views not available
+            score += 0.02 * title_similarity;
         }
 
-        // 7. Search rank boost (earlier candidates are prioritized slightly)
+        // 7. Search rank boost (scaled by title similarity)
         let rank_boost = match rank_idx {
             0 => 0.05,
             1 => 0.03,
             2 => 0.01,
             _ => 0.0,
         };
-        score += rank_boost;
+        score += rank_boost * title_similarity;
 
         // 8. Variant Boosts
         for rule in VARIANTS {
@@ -1014,5 +1011,52 @@ mod tests {
         );
 
         assert_eq!(scored[0].0.url, "https://youtube.com/original");
+    }
+
+    #[test]
+    fn test_come_my_way_ranking() {
+        let query = "Come My Way";
+        let expected_title = "Come My Way";
+        let expected_artist = Some("Sơn Tùng M-TP & Tyga");
+        let expected_duration = Some(Duration::from_secs(192));
+
+        let cand_making = TrackCandidate {
+            source: "YouTube".to_string(),
+            title: "SON TUNG M-TP | MAKING MY WAY | OFFICIAL VISUALIZER".to_string(),
+            artist: "Sơn Tùng M-TP Official".to_string(),
+            duration: Some(Duration::from_secs(258)),
+            popularity: Some(10_000_000),
+            is_official: true,
+            is_topic_channel: false,
+            url: "https://youtube.com/making".to_string(),
+            thumbnail: None,
+        };
+
+        let cand_come = TrackCandidate {
+            source: "YouTube".to_string(),
+            title: "SON TUNG M-TP x TYGA | COME MY WAY | OFFICIAL MUSIC VIDEO".to_string(),
+            artist: "Sơn Tùng M-TP Official".to_string(),
+            duration: Some(Duration::from_secs(235)),
+            popularity: Some(15_000_000),
+            is_official: true,
+            is_topic_channel: false,
+            url: "https://youtube.com/come".to_string(),
+            thumbnail: None,
+        };
+
+        let candidates = vec![cand_making, cand_come];
+        let scored = score_candidates(
+            candidates,
+            query,
+            expected_title,
+            expected_artist,
+            expected_duration,
+        );
+
+        println!("Scored candidates detail:");
+        for (cand, score) in &scored {
+            println!("Title: '{}', Score: {}", cand.title, score);
+        }
+        assert_eq!(scored[0].0.url, "https://youtube.com/come");
     }
 }
