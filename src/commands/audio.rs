@@ -45,19 +45,25 @@ pub async fn eight_d(
     };
 
     let player_lock_clone = player_lock.clone();
-    let current_pos_opt = {
-        let mut player = player_lock.write().await;
-        player.eight_d_enabled = enabled;
-        if let Some(ref handle) = player.current_track_handle {
-            if let Ok(info) = handle.get_info().await {
-                Some(player.seek_offset + info.position)
-            } else {
-                None
-            }
+    let (current_track_handle, seek_offset) = {
+        let player = player_lock.read().await;
+        (player.current_track_handle.clone(), player.seek_offset)
+    };
+
+    let current_pos_opt = if let Some(ref handle) = current_track_handle {
+        if let Ok(info) = handle.get_info().await {
+            Some(seek_offset + info.position)
         } else {
             None
         }
+    } else {
+        None
     };
+
+    {
+        let mut player = player_lock.write().await;
+        player.eight_d_enabled = enabled;
+    }
 
     let state = if enabled { "enabled" } else { "disabled" };
     if let Some(current_pos) = current_pos_opt {

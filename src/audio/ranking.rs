@@ -166,14 +166,63 @@ const VARIANTS: &[VariantRule] = &[
         penalty: 0.40,
         hard_reject_with_duration: false,
     },
+    VariantRule {
+        term: "video",
+        penalty: 0.05,
+        hard_reject_with_duration: false,
+    },
+    VariantRule {
+        term: "visualizer",
+        penalty: 0.05,
+        hard_reject_with_duration: false,
+    },
+    VariantRule {
+        term: "mv",
+        penalty: 0.05,
+        hard_reject_with_duration: false,
+    },
 ];
 
+fn contains_word(text: &str, word: &str) -> bool {
+    let text_lower = text.to_lowercase();
+    let word_lower = word.to_lowercase();
+    
+    let mut start = 0;
+    while let Some(pos) = text_lower[start..].find(&word_lower) {
+        let actual_pos = start + pos;
+        
+        let char_before = if actual_pos > 0 {
+            text_lower[..actual_pos].chars().next_back()
+        } else {
+            None
+        };
+        
+        let char_after = text_lower[actual_pos + word_lower.len()..].chars().next();
+        
+        let is_boundary_before = match char_before {
+            Some(c) => !c.is_alphanumeric(),
+            None => true,
+        };
+        
+        let is_boundary_after = match char_after {
+            Some(c) => !c.is_alphanumeric(),
+            None => true,
+        };
+        
+        if is_boundary_before && is_boundary_after {
+            return true;
+        }
+        start = actual_pos + 1;
+    }
+    false
+}
+
 fn variant_requested(query_lower: &str, term: &str) -> bool {
-    query_lower.contains(term)
-        || (term == "bass-boosted" && query_lower.contains("bass boosted"))
-        || (term == "bass boosted" && query_lower.contains("bass-boosted"))
-        || (term == "sped-up" && query_lower.contains("sped up"))
-        || (term == "sped up" && query_lower.contains("sped-up"))
+    contains_word(query_lower, term)
+        || (term == "bass-boosted" && contains_word(query_lower, "bass boosted"))
+        || (term == "bass boosted" && contains_word(query_lower, "bass-boosted"))
+        || (term == "sped-up" && contains_word(query_lower, "sped up"))
+        || (term == "sped up" && contains_word(query_lower, "sped-up"))
 }
 
 fn find_unrequested_variant(
@@ -182,7 +231,7 @@ fn find_unrequested_variant(
     expected_title_lower: &str,
 ) -> Option<&'static VariantRule> {
     VARIANTS.iter().find(|rule| {
-        candidate_title_lower.contains(rule.term)
+        contains_word(candidate_title_lower, rule.term)
             && !variant_requested(query_lower, rule.term)
             && !variant_requested(expected_title_lower, rule.term)
     })
@@ -393,7 +442,7 @@ pub fn score_candidates(
 
         // 8. Variant Boosts
         for rule in VARIANTS {
-            let candidate_has_variant = candidate_title_lower.contains(rule.term);
+            let candidate_has_variant = contains_word(&candidate_title_lower, rule.term);
             let is_requested = variant_requested(&query_lower, rule.term)
                 || variant_requested(&expected_title_lower, rule.term);
 
@@ -431,7 +480,7 @@ pub fn score_candidates(
 
         // 11. Variant Penalties
         for rule in VARIANTS {
-            let candidate_has_variant = candidate_title_lower.contains(rule.term);
+            let candidate_has_variant = contains_word(&candidate_title_lower, rule.term);
             let is_requested = variant_requested(&query_lower, rule.term)
                 || variant_requested(&expected_title_lower, rule.term);
 
@@ -462,6 +511,24 @@ pub fn score_candidates(
                 );
             }
         }
+
+        // 12. Duration Deviation Penalty (unmasked by clamp)
+        let duration_penalty = if let Some(expected) = expected_duration {
+            if let Some(candidate_dur) = candidate.duration {
+                let diff = (expected.as_secs_f64() - candidate_dur.as_secs_f64()).abs();
+                if diff > 5.0 {
+                    // Penalty starts at 5 seconds difference, up to a max penalty of 0.35
+                    ((diff - 5.0) * 0.01).min(0.35)
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+        final_score = (final_score - duration_penalty).max(0.0);
 
         final_score = adjust_single_word_score_with_expected(
             &candidate.title,

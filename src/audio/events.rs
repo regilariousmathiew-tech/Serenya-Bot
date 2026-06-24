@@ -30,26 +30,41 @@ pub struct TrackEndHandler {
 #[async_trait]
 impl EventHandler for TrackEndHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        let (ended_uuid, was_skipped, play_time) = if let EventContext::Track(track_events) = ctx {
+        let (ended_uuid, was_skipped, play_time, is_stale) = if let EventContext::Track(track_events) = ctx {
             if let Some((state, handle)) = track_events.first() {
-                (
-                    Some(handle.uuid()),
-                    if let Some(player_lock_ref) = self.ctx.guild_players.get(&self.ctx.guild_id) {
-                        let player_lock = player_lock_ref.value().clone();
-                        drop(player_lock_ref);
-                        player_lock.read().await.skip_forced
+                let ended = handle.uuid();
+                let (skip_forced, is_stale) = if let Some(player_lock_ref) = self.ctx.guild_players.get(&self.ctx.guild_id) {
+                    let player_lock = player_lock_ref.value().clone();
+                    drop(player_lock_ref);
+                    let player = player_lock.read().await;
+                    let is_stale = if let Some(ref current_handle) = player.current_track_handle {
+                        current_handle.uuid() != ended
                     } else {
-                        false
-                    },
+                        true
+                    };
+                    (player.skip_forced, is_stale)
+                } else {
+                    (false, true)
+                };
+                (
+                    Some(ended),
+                    skip_forced,
                     state.play_time,
+                    is_stale,
                 )
             } else {
-                (None, false, Duration::from_secs(0))
+                (None, false, Duration::from_secs(0), true)
             }
         } else {
-            (None, false, Duration::from_secs(0))
+            (None, false, Duration::from_secs(0), true)
         };
 
+        if is_stale {
+            if let Some(ended) = ended_uuid {
+                tracing::info!("Ignoring TrackEnd event from stale or stopped track handle: {:?}", ended);
+            }
+            return None;
+        }
         if let Some(ended) = ended_uuid {
             let mut retry_current = false;
             // Check if track ended almost immediately after starting (i.e. play_time < 2s)
@@ -112,27 +127,48 @@ pub struct TrackErrorHandler {
 #[async_trait]
 impl EventHandler for TrackErrorHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        if let EventContext::Track(_) = ctx {
-            tracing::error!(guild_id = %self.ctx.guild_id, "Track errored (End handler will advance queue)");
-            if let Some(player_lock_ref) = self.ctx.guild_players.get(&self.ctx.guild_id) {
-                let player_lock = player_lock_ref.value().clone();
-                drop(player_lock_ref);
-                let mut player = player_lock.write().await;
-                player.consecutive_errors += 1;
-                let consecutive_errors = player.consecutive_errors;
-                let url_opt = player.now_playing.as_ref().map(|np| np.url.clone());
-                drop(player);
+        if let EventContext::Track(track_events) = ctx {
+            if let Some((_, handle)) = track_events.first() {
+                let ended = handle.uuid();
+                let is_stale = if let Some(player_lock_ref) = self.ctx.guild_players.get(&self.ctx.guild_id) {
+                    let player_lock = player_lock_ref.value().clone();
+                    drop(player_lock_ref);
+                    let player = player_lock.read().await;
+                    if let Some(ref current_handle) = player.current_track_handle {
+                        current_handle.uuid() != ended
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                };
 
-                tracing::warn!(
-                    guild_id = %self.ctx.guild_id,
-                    consecutive_errors,
-                    "Track errored: consecutive errors count: {}",
-                    consecutive_errors
-                );
+                if is_stale {
+                    tracing::info!("Ignoring TrackError event from stale or stopped track handle: {:?}", ended);
+                    return None;
+                }
 
-                // Invalidate stream cache for the errored track
-                if let Some(url) = url_opt {
-                    crate::audio::source::cache_invalidate_stream(&url).await;
+                tracing::error!(guild_id = %self.ctx.guild_id, "Track errored (End handler will advance queue)");
+                if let Some(player_lock_ref) = self.ctx.guild_players.get(&self.ctx.guild_id) {
+                    let player_lock = player_lock_ref.value().clone();
+                    drop(player_lock_ref);
+                    let mut player = player_lock.write().await;
+                    player.consecutive_errors += 1;
+                    let consecutive_errors = player.consecutive_errors;
+                    let url_opt = player.now_playing.as_ref().map(|np| np.url.clone());
+                    drop(player);
+
+                    tracing::warn!(
+                        guild_id = %self.ctx.guild_id,
+                        consecutive_errors,
+                        "Track errored: consecutive errors count: {}",
+                        consecutive_errors
+                    );
+
+                    // Invalidate stream cache for the errored track
+                    if let Some(url) = url_opt {
+                        crate::audio::source::cache_invalidate_stream(&url).await;
+                    }
                 }
             }
         }

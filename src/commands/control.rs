@@ -53,16 +53,15 @@ pub(crate) async fn seek_by_restart(
         .get(guild_id)
         .ok_or_else(|| SerenyaError::Voice("Not connected to a voice channel.".into()))?;
 
-    let handle = {
+    let old_handle_opt = {
         let mut player = player_lock.write().await;
         let has_old_handle = player.current_track_handle.is_some();
         player.is_seeking = has_old_handle;
         player.seek_offset = target_position;
+        player.current_track_handle.take()
+    };
 
-        if let Some(old_handle) = player.current_track_handle.take() {
-            let _ = old_handle.stop();
-        }
-
+    let handle = {
         let mut call = call_lock.lock().await;
         call.play_input(source)
     };
@@ -102,11 +101,15 @@ pub(crate) async fn seek_by_restart(
             .map(|current| current.url.as_str())
             == Some(url.as_str())
         {
-            player.current_track_handle = Some(handle);
+            player.current_track_handle = Some(handle.clone());
         } else {
             let _ = handle.stop();
         }
         player.is_seeking = false;
+    }
+
+    if let Some(old_handle) = old_handle_opt {
+        let _ = old_handle.stop();
     }
 
     Ok(())
