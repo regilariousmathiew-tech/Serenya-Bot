@@ -27,7 +27,7 @@ pub(crate) async fn seek_by_restart(
     let stream = match resolved_url {
         Some(stream) => stream,
         None => std::sync::Arc::new(
-            crate::audio::source::extract_stream_url_for_guild(guild_id.get(), &url).await?,
+            crate::audio::source::extract_stream_url_for_guild(guild_id.get(), &url, &ctx.data().http_client).await?,
         ),
     };
 
@@ -53,28 +53,31 @@ pub(crate) async fn seek_by_restart(
         .get(guild_id)
         .ok_or_else(|| SerenyaError::Voice("Not connected to a voice channel.".into()))?;
 
-    let handle = {
+    let old_handle_opt = {
         let mut player = player_lock.write().await;
         let has_old_handle = player.current_track_handle.is_some();
         player.is_seeking = has_old_handle;
         player.seek_offset = target_position;
+        player.current_track_handle.take()
+    };
 
-        if let Some(old_handle) = player.current_track_handle.take() {
-            let _ = old_handle.stop();
-        }
-
+    let handle = {
         let mut call = call_lock.lock().await;
         call.play_input(source)
     };
 
     // 4. Register event handlers
-    let end_handler = crate::audio::events::TrackEndHandler {
+    let playback_ctx = crate::audio::events::PlaybackContext {
         guild_id,
         database: std::sync::Arc::clone(&ctx.data().database),
         guild_players: std::sync::Arc::clone(&ctx.data().guild_players),
         http_client: ctx.data().http_client.clone(),
         serenity_ctx: ctx.serenity_context().clone(),
         config: ctx.data().config(),
+    };
+
+    let end_handler = crate::audio::events::TrackEndHandler {
+        ctx: playback_ctx.clone(),
     };
     let _ = handle.add_event(
         songbird::Event::Track(songbird::TrackEvent::End),
@@ -82,12 +85,7 @@ pub(crate) async fn seek_by_restart(
     );
 
     let error_handler = crate::audio::events::TrackErrorHandler {
-        guild_id,
-        database: std::sync::Arc::clone(&ctx.data().database),
-        guild_players: std::sync::Arc::clone(&ctx.data().guild_players),
-        http_client: ctx.data().http_client.clone(),
-        serenity_ctx: ctx.serenity_context().clone(),
-        config: ctx.data().config(),
+        ctx: playback_ctx,
     };
     let _ = handle.add_event(
         songbird::Event::Track(songbird::TrackEvent::Error),
@@ -103,11 +101,15 @@ pub(crate) async fn seek_by_restart(
             .map(|current| current.url.as_str())
             == Some(url.as_str())
         {
-            player.current_track_handle = Some(handle);
+            player.current_track_handle = Some(handle.clone());
         } else {
             let _ = handle.stop();
         }
         player.is_seeking = false;
+    }
+
+    if let Some(old_handle) = old_handle_opt {
+        let _ = old_handle.stop();
     }
 
     Ok(())
@@ -276,6 +278,7 @@ pub async fn replay(ctx: Context<'_>) -> Result<(), Error> {
 
     if let Some(handle) = &player.current_track_handle {
         let _ = handle.seek(Duration::from_secs(0));
+        drop(player);
         let embed = crate::discord::embeds::playback_status_embed(
             "🔄 Replay",
             "Replaying current track from the beginning.",
@@ -283,26 +286,30 @@ pub async fn replay(ctx: Context<'_>) -> Result<(), Error> {
         );
         ctx.send(poise::CreateReply::default().embed(embed)).await?;
     } else if let Some(prev) = player.previous_track.take() {
+        let prev_title = prev.title.clone();
+        player.queue.push_front(prev);
+        drop(player);
         let embed = crate::discord::embeds::playback_status_embed(
             "🔄 Replay",
-            &format!("Replaying previous track: **{}**", prev.title),
+            &format!("Replaying previous track: **{}**", prev_title),
             0x5865F2,
         );
         ctx.send(poise::CreateReply::default().embed(embed)).await?;
-        player.queue.push_front(prev);
-        drop(player);
         crate::audio::events::play_next(
-            guild_id,
-            std::sync::Arc::clone(&ctx.data().database),
-            std::sync::Arc::clone(&ctx.data().guild_players),
-            ctx.data().http_client.clone(),
-            ctx.serenity_context().clone(),
-            ctx.data().config(),
+            crate::audio::events::PlaybackContext {
+                guild_id,
+                database: std::sync::Arc::clone(&ctx.data().database),
+                guild_players: std::sync::Arc::clone(&ctx.data().guild_players),
+                http_client: ctx.data().http_client.clone(),
+                serenity_ctx: ctx.serenity_context().clone(),
+                config: ctx.data().config(),
+            },
             None,
             true,
         )
         .await?;
     } else {
+        drop(player);
         let embed = crate::discord::embeds::playback_status_embed(
             "❌ Error",
             "Nothing is playing, and there is no previous track.",
@@ -337,6 +344,20 @@ pub async fn previous(ctx: Context<'_>) -> Result<(), Error> {
         .take()
         .ok_or_else(|| SerenyaError::NotFound("No previous track found.".into()))?;
 
+    if let Some(mut curr) = player.now_playing.take() {
+        curr.resolved_url = None;
+        player.queue.push_front(curr);
+    }
+    let mut prev_to_play = prev.clone();
+    prev_to_play.resolved_url = None;
+    player.queue.push_front(prev_to_play);
+
+    player.skip_forced = true;
+    let has_handle = player.current_track_handle.is_some();
+    let handle_opt = player.current_track_handle.take();
+
+    drop(player);
+
     let embed = crate::discord::embeds::playback_status_embed(
         "⏮️ Previous",
         &format!("Playing previous track: **{}**", prev.title),
@@ -344,26 +365,20 @@ pub async fn previous(ctx: Context<'_>) -> Result<(), Error> {
     );
     ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
-    if let Some(mut curr) = player.now_playing.take() {
-        curr.resolved_url = None;
-        player.queue.push_front(curr);
-    }
-    let mut prev = prev;
-    prev.resolved_url = None;
-    player.queue.push_front(prev);
-
-    player.skip_forced = true;
-    if let Some(handle) = &player.current_track_handle {
-        let _ = handle.stop();
+    if has_handle {
+        if let Some(handle) = handle_opt {
+            let _ = handle.stop();
+        }
     } else {
-        drop(player);
         crate::audio::events::play_next(
-            guild_id,
-            std::sync::Arc::clone(&ctx.data().database),
-            std::sync::Arc::clone(&ctx.data().guild_players),
-            ctx.data().http_client.clone(),
-            ctx.serenity_context().clone(),
-            ctx.data().config(),
+            crate::audio::events::PlaybackContext {
+                guild_id,
+                database: std::sync::Arc::clone(&ctx.data().database),
+                guild_players: std::sync::Arc::clone(&ctx.data().guild_players),
+                http_client: ctx.data().http_client.clone(),
+                serenity_ctx: ctx.serenity_context().clone(),
+                config: ctx.data().config(),
+            },
             None,
             true,
         )
@@ -425,6 +440,12 @@ pub async fn jump(
     };
 
     let skipped = player.queue.jump(index)?;
+    player.skip_forced = true;
+    let has_handle = player.current_track_handle.is_some();
+    let handle_opt = player.current_track_handle.take();
+
+    drop(player);
+
     let embed = crate::discord::embeds::playback_status_embed(
         "⏭️ Jump",
         &format!(
@@ -435,18 +456,20 @@ pub async fn jump(
     );
     ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
-    player.skip_forced = true;
-    if let Some(handle) = &player.current_track_handle {
-        let _ = handle.stop();
+    if has_handle {
+        if let Some(handle) = handle_opt {
+            let _ = handle.stop();
+        }
     } else {
-        drop(player);
         crate::audio::events::play_next(
-            guild_id,
-            std::sync::Arc::clone(&ctx.data().database),
-            std::sync::Arc::clone(&ctx.data().guild_players),
-            ctx.data().http_client.clone(),
-            ctx.serenity_context().clone(),
-            ctx.data().config(),
+            crate::audio::events::PlaybackContext {
+                guild_id,
+                database: std::sync::Arc::clone(&ctx.data().database),
+                guild_players: std::sync::Arc::clone(&ctx.data().guild_players),
+                http_client: ctx.data().http_client.clone(),
+                serenity_ctx: ctx.serenity_context().clone(),
+                config: ctx.data().config(),
+            },
             None,
             true,
         )
@@ -499,6 +522,7 @@ pub async fn r#move(
     };
 
     player.queue.move_item(from_idx, to_idx)?;
+    drop(player);
     let embed = crate::discord::embeds::playback_status_embed(
         "↕️ Move",
         &format!("Moved track from #{from} to #{to}."),

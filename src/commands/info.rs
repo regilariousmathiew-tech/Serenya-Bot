@@ -98,7 +98,7 @@ async fn enqueue_selected_track(
             .get(guild_id)
             .ok_or_else(|| SerenyaError::Voice("Not connected to a voice channel.".into()))?;
         let resolved_url =
-            crate::audio::extract_stream_url_for_guild(guild_id.get(), &selected_track.url).await?;
+            crate::audio::extract_stream_url_for_guild(guild_id.get(), &selected_track.url, &ctx.data().http_client).await?;
         let eight_d_enabled = player.eight_d_enabled;
         let mut call = call_lock.lock().await;
         let source = crate::audio::source::create_stream_input(
@@ -109,26 +109,25 @@ async fn enqueue_selected_track(
         .await?;
         let handle = call.play_input(source);
 
+        let playback_ctx = crate::audio::events::PlaybackContext {
+            guild_id,
+            database: std::sync::Arc::clone(&ctx.data().database),
+            guild_players: std::sync::Arc::clone(&ctx.data().guild_players),
+            http_client: ctx.data().http_client.clone(),
+            serenity_ctx: ctx.serenity_context().clone(),
+            config: ctx.data().config(),
+        };
+
         let _ = handle.add_event(
             songbird::Event::Track(songbird::TrackEvent::End),
             crate::audio::events::TrackEndHandler {
-                guild_id,
-                database: std::sync::Arc::clone(&ctx.data().database),
-                guild_players: std::sync::Arc::clone(&ctx.data().guild_players),
-                http_client: ctx.data().http_client.clone(),
-                serenity_ctx: ctx.serenity_context().clone(),
-                config: ctx.data().config(),
+                ctx: playback_ctx.clone(),
             },
         );
         let _ = handle.add_event(
             songbird::Event::Track(songbird::TrackEvent::Error),
             crate::audio::events::TrackErrorHandler {
-                guild_id,
-                database: std::sync::Arc::clone(&ctx.data().database),
-                guild_players: std::sync::Arc::clone(&ctx.data().guild_players),
-                http_client: ctx.data().http_client.clone(),
-                serenity_ctx: ctx.serenity_context().clone(),
-                config: ctx.data().config(),
+                ctx: playback_ctx,
             },
         );
         player.current_track_handle = Some(handle);
