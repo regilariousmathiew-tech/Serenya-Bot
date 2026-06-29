@@ -210,31 +210,53 @@ pub(crate) async fn enqueue_and_play_resolved(
             let original_url = first_track_clone.url.clone();
             let mut current_track = first_track_clone;
 
-            if current_track.url.starts_with("ytsearch1:") {
-                if let Err(e) = crate::audio::resolver::resolve_ytsearch_track(
-                    &mut current_track,
-                    &http_client_clone,
-                )
-                .await
-                {
-                    tracing::error!("Failed to resolve Spotify track search: {:?}", e);
-                } else {
-                    let mut player = player_lock_clone.write().await;
-                    if player.playback_status == PlaybackStatus::Playing
-                        && let Some(ref mut np) = player.now_playing
-                        && np.url == original_url
+            let guild_id_val = guild_id.get();
+            let http_client_resolver = http_client_clone.clone();
+            let mut track_for_resolver = current_track.clone();
+
+            let resolver_handle = tokio::spawn(async move {
+                if track_for_resolver.url.starts_with("ytsearch1:") {
+                    if let Err(e) = crate::audio::resolver::resolve_ytsearch_track(
+                        &mut track_for_resolver,
+                        &http_client_resolver,
+                    )
+                    .await
                     {
-                        *np = current_track.clone();
+                        tracing::error!("Failed to resolve Spotify track search: {:?}", e);
                     }
                 }
-            }
 
-            let stream_res = crate::audio::extract_stream_url_for_guild(
-                guild_id.get(),
-                &current_track.url,
-                &http_client_clone,
-            )
-            .await;
+                let stream_res = crate::audio::extract_stream_url_for_guild(
+                    guild_id_val,
+                    &track_for_resolver.url,
+                    &http_client_resolver,
+                )
+                .await;
+
+                stream_res.map(|stream| (track_for_resolver, stream))
+            });
+
+            let stream_res = match resolver_handle.await {
+                Ok(Ok((updated_track, stream))) => {
+                    current_track = updated_track;
+                    Ok(stream)
+                }
+                Ok(Err(e)) => Err(e),
+                Err(join_err) => {
+                    tracing::error!("Audio resolver task panicked: {:?}", join_err);
+                    Err(crate::utils::SerenyaError::Audio(format!("Resolver task panicked: {:?}", join_err)))
+                }
+            };
+
+            if current_track.url != original_url {
+                let mut player = player_lock_clone.write().await;
+                if player.playback_status == PlaybackStatus::Playing
+                    && let Some(ref mut np) = player.now_playing
+                    && np.url == original_url
+                {
+                    *np = current_track.clone();
+                }
+            }
 
             // 2. Race condition check: check if player was reset/stopped/skipped while resolving
             {

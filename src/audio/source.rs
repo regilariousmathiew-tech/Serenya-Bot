@@ -86,12 +86,35 @@ pub async fn cache_invalidate_stream(url: &str) {
     SOUNDCLOUD_STREAM_CACHE.load().invalidate(url).await;
 }
 
-pub async fn cache_set_stream(url: String, stream: &youtube_resolver::ResolvedStream) {
-    STREAM_CACHE
-        .load()
-        .insert(url, Arc::new(stream.clone()))
-        .await;
-}
+    pub fn is_allowed_stream_domain(url: &str) -> bool {
+        let Ok(parsed) = reqwest::Url::parse(url) else {
+            return false;
+        };
+        let Some(host) = parsed.host_str() else {
+            return false;
+        };
+        let allowed = [
+            "googlevideo.com",
+            "youtube.com",
+            "youtu.be",
+            "sndcdn.com",
+            "soundcloud.com",
+            "discordapp.com",
+            "discordapp.net",
+        ];
+        allowed.iter().any(|&domain| host == domain || host.ends_with(&format!(".{}", domain)))
+    }
+
+    pub async fn cache_set_stream(url: String, stream: &youtube_resolver::ResolvedStream) {
+        if !is_allowed_stream_domain(&stream.url) {
+            tracing::warn!("Blocked caching of unverified domain in stream URL: {}", stream.url);
+            return;
+        }
+        STREAM_CACHE
+            .load()
+            .insert(url, Arc::new(stream.clone()))
+            .await;
+    }
 
 fn url_encode(s: &str) -> String {
     percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
@@ -371,10 +394,14 @@ async fn resolve_soundcloud_stream_url(
     };
 
     // 6. Cache the result for 5 minutes (SoundCloud signed URLs expire quickly)
-    SOUNDCLOUD_STREAM_CACHE
-        .load()
-        .insert(track_url.to_owned(), Arc::new(stream.clone()))
-        .await;
+    if is_allowed_stream_domain(&stream.url) {
+        SOUNDCLOUD_STREAM_CACHE
+            .load()
+            .insert(track_url.to_owned(), Arc::new(stream.clone()))
+            .await;
+    } else {
+        tracing::warn!("Blocked caching of unverified domain in SoundCloud stream URL: {}", stream.url);
+    }
 
     Ok(stream)
 }
